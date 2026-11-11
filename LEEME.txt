@@ -1,0 +1,12 @@
+APP GYM — cómo ponerla en tu iPhone (gratis)
+
+1) Crea una cuenta en github.com (gratis).
+2) Arriba a la derecha: "+" > "New repository". Nombre: gym. Déjalo en "Public" y pulsa "Create repository".
+3) En la página del repositorio: "uploading an existing file". Arrastra TODOS los archivos de esta carpeta
+   (index.html, manifest.webmanifest, sw.js, icon-180.png, icon-192.png, icon-512.png) y pulsa "Commit changes".
+4) Ve a Settings > Pages. En "Branch" elige "main" y la carpeta "/ (root)". Guarda.
+5) En 1-2 minutos aparece tu dirección: https://TU-USUARIO.github.io/gym/
+6) Ábrela en Safari en el iPhone > botón Compartir > "Añadir a pantalla de inicio".
+   Ábrela siempre desde ese icono para que los datos se conserven.
+
+IMPORTANTE: tus entrenos se guardan solo en el iPhone. Haz una copia en Ajustes > "Guardar copia" de vez en cuando.
