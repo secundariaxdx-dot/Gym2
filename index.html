@@ -451,12 +451,12 @@ body.has-timer #toast { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) 
     return fresh();
   }
   var state = load();
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { memoryOnly = true; } }
+  var timer = state.timer || null; // el descanso en marcha sobrevive a un reinicio de la app
+  function save() { state.timer = timer; try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { memoryOnly = true; } }
   save();
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* nada */ }
 
   var ui = { tab: 'hoy', modal: null, query: '', histOpen: null, toast: '' };
-  var timer = null;
   function exById(id) { for (var i = 0; i < state.exercises.length; i++) if (state.exercises[i].id === id) return state.exercises[i]; return null; }
 
   /* ---------- entreno en curso ---------- */
@@ -488,7 +488,7 @@ body.has-timer #toast { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) 
   function startTimer(ex) {
     var rest = E.restFor(ex || {});
     timer = { end: Date.now() + rest * 1000, total: rest, fired: false };
-    updateTimer();
+    save(); updateTimer();
   }
   var audio = null;
   function unlockAudio() {
@@ -512,7 +512,7 @@ body.has-timer #toast { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) 
     el.hidden = false; document.body.classList.add('has-timer');
     if (left <= 0) {
       if (!timer.fired) { timer.fired = true; beep(); }
-      if (-left > 5) { timer = null; el.hidden = true; document.body.classList.remove('has-timer'); return; }
+      if (-left > 5) { timer = null; save(); el.hidden = true; document.body.classList.remove('has-timer'); return; }
       el.classList.add('fin'); $('.t', el).textContent = '¡Listo!'; $('.bar i', el).style.width = '100%';
     } else {
       el.classList.remove('fin'); $('.t', el).textContent = mmss(left); $('.bar i', el).style.width = Math.max(0, 100 - (left / timer.total) * 100) + '%';
@@ -859,7 +859,7 @@ body.has-timer #toast { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) 
     var d; try { d = JSON.parse(txt); } catch (e) { toast('El texto no es una copia válida'); return; }
     if (!d || d.v !== 1 || !Array.isArray(d.exercises) || !d.routines || !Array.isArray(d.sessions)) { toast('El archivo no es una copia de Gym'); return; }
     ask('Importar copia', 'Esto reemplaza todos los datos actuales (' + d.sessions.length + ' sesiones en la copia).', 'Importar', function () {
-      d.active = null; d.settings = d.settings || { sound: true, lastBackup: 0 }; state = d; timer = null; unwake(); save(); closeModal(); ui.tab = 'hoy'; render(); toast('Copia importada');
+      d.active = null; d.timer = null; d.settings = d.settings || { sound: true, lastBackup: 0 }; state = d; timer = null; unwake(); save(); closeModal(); ui.tab = 'hoy'; render(); toast('Copia importada');
     }, true);
   }
 
@@ -874,9 +874,9 @@ body.has-timer #toast { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) 
     switch (a) {
       case 'tab': ui.tab = el.getAttribute('data-t'); closeModal(); render(); window.scrollTo(0, 0); break;
       case 'close': closeModal(); break;
-      case 't-m': if (timer) { timer.end -= 15000; timer.total = Math.max(1, timer.total - 15); updateTimer(); } break;
-      case 't-p': if (timer) { timer.end += 15000; timer.total += 15; timer.fired = false; updateTimer(); } break;
-      case 't-x': timer = null; updateTimer(); break;
+      case 't-m': if (timer) { timer.end -= 15000; timer.total = Math.max(1, timer.total - 15); save(); updateTimer(); } break;
+      case 't-p': if (timer) { timer.end += 15000; timer.total += 15; timer.fired = false; save(); updateTimer(); } break;
+      case 't-x': timer = null; save(); updateTimer(); break;
       case 'confirm-yes': var fn = ui.modal.fn; if (fn) fn(); break;
       case 'start': startWorkout(el.getAttribute('data-k')); break;
       case 'toggle': act.open = act.open === i ? -1 : i; save(); render(); break;
