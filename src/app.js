@@ -85,20 +85,36 @@
     save(); updateTimer();
   }
   var audio = null;
+  var sounds = []; // registro para los tests: qué sonidos se han pedido
+  function soundOn() { return state.settings.sound !== false; }
   function unlockAudio() {
-    try { if (!audio) { var C = window.AudioContext || window.webkitAudioContext; if (C) audio = new C(); } if (audio && audio.state === 'suspended') audio.resume(); } catch (e) { /* nada */ }
+    try {
+      // 'ambient': se mezcla con la música sin pararla y respeta el modo silencio
+      if (navigator.audioSession && navigator.audioSession.type !== 'ambient') navigator.audioSession.type = 'ambient';
+      if (!audio) { var C = window.AudioContext || window.webkitAudioContext; if (C) audio = new C(); }
+      if (audio && audio.state !== 'running' && audio.resume) { var pr = audio.resume(); if (pr && pr.catch) pr.catch(function () {}); }
+    } catch (e) { /* nada */ }
   }
-  function beep() {
-    if (state.settings.sound === false) return;
-    try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (e) { /* nada */ }
+  function tone(f, at, dur, vol, type) {
+    var o = audio.createOscillator(), g = audio.createGain();
+    o.type = type || 'sine'; o.frequency.value = f; o.connect(g); g.connect(audio.destination);
+    var t = audio.currentTime + at; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  function play(kind) {
+    if (!soundOn()) return;
+    sounds.push(kind);
+    unlockAudio();
     if (!audio) return;
-    [0, 0.22, 0.44].forEach(function (d) {
-      var o = audio.createOscillator(), g = audio.createGain();
-      o.frequency.value = 880; o.connect(g); g.connect(audio.destination);
-      var t = audio.currentTime + d; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
-      o.start(t); o.stop(t + 0.18);
-    });
+    try {
+      if (kind === 'tick') { tone(1650, 0, 0.05, 0.07); }
+      else if (kind === 'end') {
+        // dos tandas de campanilla ascendente, clara por encima de la música
+        [0, 0.9].forEach(function (b) { tone(880, b, 0.22, 0.55, 'triangle'); tone(1175, b + 0.16, 0.22, 0.55, 'triangle'); tone(1568, b + 0.32, 0.4, 0.6, 'triangle'); });
+      }
+    } catch (e) { /* nada */ }
   }
+  function beep() { play('end'); }
   function updateTimer() {
     var el = $('#timer'); if (!el) return;
     if (!timer) { el.hidden = true; document.body.classList.remove('has-timer'); return; }
@@ -212,7 +228,7 @@
   function viewWorkout() {
     var a = state.active, done = 0, total = 0;
     a.entries.forEach(function (e) { e.sets.forEach(function (s) { total++; if (s.done) done++; }); });
-    var h = '<header class="top"><div><h1>' + esc(a.name) + '</h1><div class="sub"><span id="elapsed">' + mmss((Date.now() - a.t0) / 1000) + '</span> · <span id="progress">' + done + '/' + total + ' series</span></div></div><button class="btn primary sm" data-a="finish">Terminar</button></header>';
+    var h = '<header class="top"><div><h1>' + esc(a.name) + '</h1><div class="sub"><span id="elapsed">' + mmss((Date.now() - a.t0) / 1000) + '</span> · <span id="progress">' + done + '/' + total + ' series</span></div></div><div class="top-act"><button class="btn sm mute-b" data-a="mute" aria-label="Silenciar sonidos">' + muteIcon() + '</button><button class="btn primary sm" data-a="finish">Terminar</button></div></header>';
     if (!a.entries.length) h += '<div class="empty">Sesión vacía. Añade ejercicios para empezar.</div>';
     a.entries.forEach(function (e, i) { h += cardHtml(e, i, a.open === i); });
     h += '<button class="btn wide" data-a="add-ex">+ Añadir ejercicio</button><button class="link danger" data-a="discard">Descartar entreno</button>';
@@ -327,7 +343,7 @@
     clearTimeout(prT); prT = setTimeout(function () { b.hidden = true; }, 2600);
   }
   function fanfare() {
-    if (state.settings.sound === false || !audio) return;
+    if (!soundOn() || !audio) return;
     try {
       [523, 659, 784, 1047].forEach(function (f, i) {
         var o = audio.createOscillator(), g = audio.createGain();
@@ -490,7 +506,7 @@
       '<div class="r-btns"><button class="btn primary" data-a="backup">Guardar copia</button><button class="btn" data-a="copy">Copiar texto</button></div>' +
       '<div class="r-btns"><button class="btn" data-a="import-file">Importar archivo</button><button class="btn" data-a="import-paste">Pegar texto</button></div>' +
       '<input id="file" type="file" accept="application/json,.json" hidden></section>' +
-      '<section class="card pad"><h2>Descanso</h2><label class="switch"><span>Sonido y vibración al acabar</span><input type="checkbox" data-f="sound"' + (state.settings.sound !== false ? ' checked' : '') + '></label></section>' +
+      '<section class="card pad"><h2>Descanso</h2><label class="switch"><span>Sonidos (serie hecha y fin del descanso)</span><input type="checkbox" data-f="sound"' + (state.settings.sound !== false ? ' checked' : '') + '></label></section>' +
       '<section class="card pad"><h2>Fútbol y correr</h2><label class="switch"><span>Cuentan (poco) en la fatiga de piernas</span><input type="checkbox" data-f="actFatigue"' + (state.settings.actFatigue !== false ? ' checked' : '') + '></label></section>' +
       '<section class="card pad"><h2>Instalar en el iPhone</h2><p class="muted small">En Safari: botón Compartir → «Añadir a pantalla de inicio». Así se abre a pantalla completa y los datos se conservan.</p></section>' +
       '<section class="card pad"><h2>Datos iniciales</h2><p class="muted small">Vuelve a cargar tus 17 ejercicios con la última sesión de las capturas. Borra tu historial.</p><button class="btn danger" data-a="reset">Restaurar datos iniciales</button></section>' +
@@ -571,11 +587,16 @@
   function ask(title, text, yes, fn, danger) { openModal({ type: 'confirm', title: title, text: text, yes: yes, fn: fn, danger: danger }); }
 
   /* ---------- render ---------- */
+  function muteIcon() { return soundOn() ? '🔊' : '🔇'; }
+  function syncMute() {
+    document.querySelectorAll('.mute-b').forEach(function (b) { b.textContent = muteIcon(); b.classList.toggle('off', !soundOn()); b.setAttribute('aria-pressed', soundOn() ? 'false' : 'true'); });
+    var c = document.querySelector('[data-f=sound]'); if (c) c.checked = soundOn();
+  }
   function render() {
     var y = window.scrollY;
     var html = ui.tab === 'hoy' ? (state.active ? viewWorkout() : viewHoy()) : ui.tab === 'cal' ? viewCal() : ui.tab === 'ej' ? viewEj() : ui.tab === 'prog' ? viewProg() : viewSet();
     $('#app').innerHTML = html;
-    renderTabs(); updateTimer();
+    renderTabs(); updateTimer(); syncMute();
     window.scrollTo(0, y);
   }
   var toastT = null;
@@ -669,6 +690,7 @@
   }
 
   document.addEventListener('pointerdown', unlockAudio, { once: false, passive: true });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { unlockAudio(); updateTimer(); } });
 
   document.addEventListener('click', function (ev) {
     var t = ev.target;
@@ -691,6 +713,7 @@
       case 't-m': if (timer) { timer.end -= 15000; timer.total = Math.max(1, timer.total - 15); save(); updateTimer(); } break;
       case 't-p': if (timer) { timer.end += 15000; timer.total += 15; timer.fired = false; save(); updateTimer(); } break;
       case 't-x': timer = null; save(); updateTimer(); break;
+      case 'mute': state.settings.sound = !soundOn(); save(); syncMute(); if (soundOn()) play('tick'); toast(soundOn() ? 'Sonido activado' : 'Sonido silenciado'); break;
       case 'confirm-yes': var fn = ui.modal.fn; if (fn) fn(); break;
       case 'start': startWorkout(el.getAttribute('data-k')); break;
       case 'toggle': act.open = act.open === i ? -1 : i; save(); render(); break;
@@ -701,6 +724,7 @@
         var wOk = !isNaN(w) || (exr && exr.equip === 'corporal');
         if (!(r > 0) || !wOk) { var row = $('[data-row="' + i + '-' + j + '"]'); if (row) { row.classList.remove('err'); void row.offsetWidth; row.classList.add('err'); } toast('Anota peso y repeticiones'); break; }
         s.done = true; s.w = isNaN(w) ? 0 : w; s.r = r;
+        play('tick');
         checkPR(e, j);
         startTimer(exr || { fatigue: e.fatigue });
         if (e.sets.every(function (x) { return x.done; }) && i + 1 < act.entries.length) act.open = i + 1;
@@ -819,7 +843,7 @@
   });
   document.addEventListener('change', function (ev) {
     var t = ev.target;
-    if (t.getAttribute && t.getAttribute('data-f') === 'sound') { state.settings.sound = t.checked; save(); }
+    if (t.getAttribute && t.getAttribute('data-f') === 'sound') { state.settings.sound = t.checked; save(); syncMute(); }
     else if (t.getAttribute && t.getAttribute('data-f') === 'actFatigue') { state.settings.actFatigue = t.checked; save(); }
     else if (t.id === 'file' && t.files && t.files[0]) { var rd = new FileReader(); rd.onload = function () { importText(String(rd.result)); }; rd.readAsText(t.files[0]); t.value = ''; }
     else if (t.id === 'f-equip' && ui.modal && ui.modal.type === 'exedit' && ui.modal.isNew && !ui.modal.stepTouched) { $('#f-step').value = fmt(STEP_DEFAULT[t.value] || 2.5); $('#f-unit').value = 'kg'; }
@@ -836,5 +860,5 @@
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () { }); });
   }
-  window.__gym = { get state() { return state; }, E: E }; // útil para pruebas
+  window.__gym = { get state() { return state; }, E: E, sounds: sounds }; // útil para pruebas
 })();

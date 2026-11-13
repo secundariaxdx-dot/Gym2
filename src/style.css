@@ -180,3 +180,8 @@ body.has-timer #toast { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) 
 .item.lib .ex-name::before { content: '+ '; color: var(--accent); font-weight: 800; }
 .li-main { appearance: none; background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; flex: 1; cursor: pointer; }
 #f-rname { font-weight: 600; }
+
+.top-act { display: flex; gap: 8px; align-items: center; }
+.mute-b { font-size: 17px; line-height: 1; }
+.btn.mute-b { padding: 8px 10px; }
+.mute-b.off { opacity: 0.6; }
