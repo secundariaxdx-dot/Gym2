@@ -1193,7 +1193,7 @@ body.has-timer #toast { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) 
       '<section class="card pad"><h2>Fútbol y correr</h2><label class="switch"><span>Cuentan (poco) en la fatiga de piernas</span><input type="checkbox" data-f="actFatigue"' + (state.settings.actFatigue !== false ? ' checked' : '') + '></label></section>' +
       '<section class="card pad"><h2>Instalar en el iPhone</h2><p class="muted small">En Safari: botón Compartir → «Añadir a pantalla de inicio». Así se abre a pantalla completa y los datos se conservan.</p></section>' +
       '<section class="card pad"><h2>Datos iniciales</h2><p class="muted small">Vuelve a cargar tus 17 ejercicios con la última sesión de las capturas. Borra tu historial.</p><button class="btn danger" data-a="reset">Restaurar datos iniciales</button></section>' +
-      '<div class="muted small center">Versión 1.3 · progresión al fallo con doble progresión</div>';
+      '<div class="muted small center" id="ver">Versión 1.4 (gym-v6) · progresión al fallo con doble progresión</div>';
   }
 
   /* ---------- modales ---------- */
@@ -1541,7 +1541,19 @@ body.has-timer #toast { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) 
   render();
   if (state.active) wake();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
-    window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () { }); });
+    // Versión nueva: se recarga sola (si estás en mitad de un entreno, al volver a la app; los datos ya están guardados)
+    var hadSW = !!navigator.serviceWorker.controller, reloadPending = false, swReg = null;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (!hadSW) { hadSW = true; return; }
+      if (state.active && !document.hidden) { reloadPending = true; return; }
+      location.reload();
+    });
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) return;
+      if (reloadPending) { location.reload(); return; }
+      if (swReg) swReg.update().catch(function () { });
+    });
+    window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (r) { swReg = r; }).catch(function () { }); });
   }
   window.__gym = { get state() { return state; }, E: E, sounds: sounds }; // útil para pruebas
 })();

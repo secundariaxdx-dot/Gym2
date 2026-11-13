@@ -1,4 +1,5 @@
 import os, json
+CACHE = 'gym-v6'  # súbelo cuando cambie algo que el iPhone deba recargar (se muestra en Ajustes)
 from PIL import Image, ImageDraw
 root = os.path.dirname(os.path.abspath(__file__))
 src, dist = os.path.join(root, 'src'), root  # la web se genera en la raíz: GitHub Pages la sirve desde ahí
@@ -7,6 +8,7 @@ rd = lambda n: open(os.path.join(src, n), encoding='utf-8').read()
 html = rd('template.html')
 for key, f in (('{{CSS}}', 'style.css'), ('{{ENGINE}}', 'engine.js'), ('{{SEED}}', 'seed.js'), ('{{LIB}}', 'library.js'), ('{{APP}}', 'app.js')):
     html = html.replace(key, rd(f))
+html = html.replace('{{VER}}', CACHE)
 open(os.path.join(dist, 'index.html'), 'w', encoding='utf-8').write(html)
 
 manifest = {
@@ -21,9 +23,9 @@ manifest = {
 }
 json.dump(manifest, open(os.path.join(dist, 'manifest.webmanifest'), 'w'), indent=2)
 
-sw = """const CACHE = 'gym-v5';
+sw = """const CACHE = '%%CACHE%%';
 const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
-self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
+self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 // Caché primero: abre al instante aunque la señal sea mala. Se actualiza en segundo plano
 // y la versión nueva se ve la siguiente vez que abres la app.
@@ -31,13 +33,13 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   e.respondWith(caches.open(CACHE).then(async c => {
     const hit = await c.match(e.request);
-    const net = fetch(e.request).then(r => { if (r && r.ok) c.put(e.request, r.clone()); return r; }).catch(() => null);
+    const net = fetch(e.request.url, { cache: 'no-cache' }).then(r => { if (r && r.ok) c.put(e.request, r.clone()); return r; }).catch(() => null);
     if (hit) { e.waitUntil(net); return hit; }
     return (await net) || (await c.match('index.html')) || Response.error();
   }));
 });
 """
-open(os.path.join(dist, 'sw.js'), 'w').write(sw)
+open(os.path.join(dist, 'sw.js'), 'w').write(sw.replace('%%CACHE%%', CACHE))
 
 def icon(size):
     S = size * 4

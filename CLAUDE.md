@@ -16,7 +16,7 @@ Idioma de la app y de la conversación: español.
 1. Editar `src/`.
 2. Subir el nombre de caché en `build.py` (`CACHE = 'gym-vN'`) si cambia algo que el iPhone deba recargar.
 3. `python3 build.py`
-4. `node test/engine.test.js` y `python3 test/e2e.py && python3 test/e2e_v12.py && python3 test/e2e_v13.py && python3 test/persist.py && python3 test/e2e_v14.py`
+4. `node test/engine.test.js` y `python3 test/e2e.py && python3 test/e2e_v12.py && python3 test/e2e_v13.py && python3 test/persist.py && python3 test/e2e_v14.py && python3 test/update.py`
    (requiere `pip install playwright`; usa /usr/bin/google-chrome)
 5. Commit + push a main (Pages publica en 1–2 min). Comprobar que `sw.js` publicado muestra el nuevo `gym-vN`.
 
@@ -36,4 +36,4 @@ Idioma de la app y de la conversación: español.
 
 ## Versiones
 v1.0 núcleo · v1.1 temporizador persistente + offline · v1.2 calendario, análisis, récords · v1.3 biblioteca 122 ejercicios y rutinas · v1.4 sonidos (clic al marcar serie, aviso al acabar el descanso, botón 🔊/🔇 = settings.sound; audioSession 'ambient' para no cortar la música).
-Siguiente caché: gym-v6. Los sonidos solo suenan con la app abierta: iOS congela la PWA en segundo plano y aviso con la app cerrada requeriría Web Push con servidor. Pendiente posible: pasos de Apple Health (requeriría app nativa).
+Siguiente caché: gym-v7 (variable CACHE arriba en build.py; se ve en Ajustes). El SW descarga sin caché HTTP y la app se recarga sola al activarse una versión nueva. Los sonidos solo suenan con la app abierta: iOS congela la PWA en segundo plano y aviso con la app cerrada requeriría Web Push con servidor. Pendiente posible: pasos de Apple Health (requeriría app nativa).
