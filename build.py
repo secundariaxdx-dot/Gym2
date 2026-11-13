@@ -9,7 +9,7 @@ html = rd('template.html')
 for key, f in (('{{CSS}}', 'style.css'), ('{{ENGINE}}', 'engine.js'), ('{{SEED}}', 'seed.js'), ('{{LIB}}', 'library.js'), ('{{APP}}', 'app.js')):
     html = html.replace(key, rd(f))
 # Servidor de avisos (push/): URL del Worker desplegado y clave pública VAPID
-PUSH_URL = ''
+PUSH_URL = 'https://gym-push.secundariaxdx.workers.dev'
 PUSH_KEY = 'BBlqNdvPtv93oxTx8Zr10Yi5ZeNHb3uGzCIo_174AAwCttp-vr9gp0KIeTGiJwDEUX5ZqSUgGg73nZD1aUXJEyU'
 html = html.replace('{{VER}}', CACHE).replace('{{PUSH_URL}}', PUSH_URL).replace('{{PUSH_KEY}}', PUSH_KEY)
 open(os.path.join(dist, 'index.html'), 'w', encoding='utf-8').write(html)

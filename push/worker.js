@@ -3,7 +3,7 @@
 // programa una alarma para el final del descanso. Al saltar, envía un Web Push sin
 // contenido (el service worker de la app pone el texto). No guarda nada más.
 //
-// Rutas (POST, JSON): /sub {id, sub}  /arm {id, at}  /cancel {id}  /test {id}
+// Rutas (POST, JSON): /sub {id, sub}  /arm {id, at}  /cancel {id}  /test {id}  /status {id}
 // Secreto: VAPID_PRIVATE_JWK (JWK de la clave privada P-256). Var: VAPID_SUB.
 
 const ORIGINS = ['https://secundariaxdx-dot.github.io'];
@@ -25,7 +25,7 @@ export default {
     const url = new URL(req.url);
     if (req.method === 'GET' && url.pathname === '/') return new Response('gym-push ok');
     if (!h) return json({ error: 'origin' }, 403);
-    if (req.method !== 'POST' || !['/sub', '/arm', '/cancel', '/test'].includes(url.pathname)) return json({ error: 'not found' }, 404, h);
+    if (req.method !== 'POST' || !['/sub', '/arm', '/cancel', '/test', '/status'].includes(url.pathname)) return json({ error: 'not found' }, 404, h);
     let body;
     try { body = await req.json(); } catch (e) { return json({ error: 'json' }, 400, h); }
     if (!body || !ID_RE.test(body.id || '')) return json({ error: 'id' }, 400, h);
@@ -51,20 +51,24 @@ export class Rest {
     const path = new URL(req.url).pathname, body = await req.json(), st = this.ctx.storage;
     if (path === '/sub') { await st.put('sub', { endpoint: body.sub.endpoint }); return json({ ok: true }, 200); }
     if (path === '/cancel') { await st.deleteAlarm(); await st.delete('at'); return json({ ok: true }, 200); }
+    if (path === '/status') return json({ sub: !!(await st.get('sub')), at: (await st.get('at')) || 0, last: (await st.get('last')) || null }, 200);
     if (!(await st.get('sub'))) return json({ error: 'nosub' }, 409);
     if (path === '/arm') { await st.put('at', Number(body.at)); await st.setAlarm(Math.max(Date.now(), Number(body.at))); return json({ ok: true }, 200); }
-    if (path === '/test') { const s = await this.send(); return json({ ok: s >= 200 && s < 300, status: s }, 200); }
+    if (path === '/test') { const s = await this.send(); return json({ ok: s.status >= 200 && s.status < 300, status: s.status, reason: s.reason }, 200); }
     return json({ error: 'not found' }, 404);
   }
   async alarm() { await this.ctx.storage.delete('at'); await this.send(); }
   async send() {
-    const sub = await this.ctx.storage.get('sub'); if (!sub) return 0;
+    const sub = await this.ctx.storage.get('sub'); if (!sub) return { status: 0, reason: 'nosub' };
     const r = await fetch(sub.endpoint, {
       method: 'POST',
       headers: { Authorization: await vapidAuth(sub.endpoint, this.env), TTL: '60', Urgency: 'high', 'Content-Length': '0' }
     });
     if (r.status === 404 || r.status === 410) await this.ctx.storage.delete('sub'); // suscripción caducada
-    return r.status;
+    let reason = '';
+    if (r.status >= 300) { try { reason = (await r.text()).slice(0, 200); } catch (e) { /* nada */ } }
+    await this.ctx.storage.put('last', { t: Date.now(), status: r.status, reason });
+    return { status: r.status, reason };
   }
 }
 

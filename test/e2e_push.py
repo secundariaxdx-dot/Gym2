@@ -69,6 +69,8 @@ try:
         # Botón de prueba -> push en ~8 s
         pushes.clear(); pg.click('[data-a=push-test]'); time.sleep(10)
         check(len(pushes) == 1, 'Probar: llega 1 push (%d)' % len(pushes))
+        pg.click('[data-t=hoy]'); pg.click('[data-t=aj]'); pg.wait_for_function("() => (document.querySelector('#push-last') || {}).textContent", timeout=5000)
+        check('entregado' in pg.inner_text('#push-last'), 'Ajustes muestra el último envío: ' + pg.inner_text('#push-last'))
 
         # Entreno: serie hecha -> se programa; app en segundo plano -> llega al final
         pg.click('[data-t=hoy]'); pg.click('[data-a=start][data-k=push]'); pg.wait_for_selector('header.top h1')

@@ -659,7 +659,15 @@
     var h = '<section class="card pad" id="push-sec"><h2>Aviso con la app cerrada</h2><label class="switch"><span>Notificación al acabar el descanso</span><input type="checkbox" data-f="push"' + (on ? ' checked' : '') + (PUSH.url ? '' : ' disabled') + '></label>' +
       '<p class="muted small">Te avisa aunque el iPhone esté bloqueado o estés en otra app. Suena el tono de notificaciones de iOS (en modo silencio solo vibra) y necesita internet. Con la app delante suena el pitido de la app. El botón 🔇 también lo silencia.</p>';
     if (!pushSupported() && !standalone) h += '<p class="muted small">Para activarlo, abre la app desde el icono de la pantalla de inicio.</p>';
-    if (on) h += '<button class="btn" data-a="push-test">Probar: bloquea el iPhone tras pulsar</button>';
+    if (on) {
+      h += '<button class="btn" data-a="push-test">Probar: bloquea el iPhone tras pulsar</button><p class="muted small" id="push-last"></p>';
+      // estado del último envío, para diagnosticar si no llega
+      pushCall('/status', {}).then(function (j) {
+        var el = $('#push-last'); if (!el || !j.last) return;
+        var ok = j.last.status >= 200 && j.last.status < 300, d = new Date(j.last.t);
+        el.textContent = 'Último envío ' + d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) + ': ' + (ok ? 'entregado a Apple ✓' : 'error ' + j.last.status + ' ' + (j.last.reason || ''));
+      }).catch(noop);
+    }
     return h + '</section>';
   }
   function muteIcon() { return soundOn() ? '🔊' : '🔇'; }

@@ -78,6 +78,9 @@ try {
   check((await post('/cancel', { id })).status === 200, 'Cancelar responde');
   await sleep(3000); check(got.length === 0, 'Cancelado: no llega push');
 
+  const stj = await (await post('/status', { id })).json();
+  check(stj.sub === true && stj.last && stj.last.status === 201, 'Estado del último envío: ' + JSON.stringify(stj.last));
+
   // suscripción caducada (410) se borra
   await post('/sub', { id, sub: { endpoint: 'http://localhost:' + FAKE + '/gone' } });
   await post('/test', { id });
