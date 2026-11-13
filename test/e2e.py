@@ -41,9 +41,25 @@ try:
         w0 = pg.locator('section.ex.open input[data-f=w]').first.input_value()
         check(w0 == '105', 'Peso precargado con el objetivo (' + w0 + ')')
 
-        # marcar sin reps -> error
+        # marcar sin escribir reps -> se apunta el objetivo tal cual (105 × 8)
         pg.click('section.ex.open .chk >> nth=0')
-        check(pg.locator('section.ex.open .set.done').count() == 0, 'No marca serie sin repeticiones')
+        s0 = pg.evaluate('() => window.__gym.state.active.entries[0].sets[0]')
+        check(s0['done'] and s0['w'] == 105 and s0['r'] == 8, 'Clic directo apunta el objetivo: %s' % s0)
+        check(pg.locator('section.ex.open input[data-f=r][data-j="0"]').input_value() == '8', 'Las reps del objetivo se ven en la serie')
+        pg.click('section.ex.open .chk >> nth=0')
+        check(pg.locator('section.ex.open .set.done').count() == 0, 'Se puede desmarcar')
+        # serie extra sin objetivo y sin reps -> sigue pidiendo reps
+        pg.click('section.ex.open [data-a=add-set]')
+        pg.click('section.ex.open .chk >> nth=3')
+        check(pg.locator('section.ex.open .set.done').count() == 0, 'Serie extra sin objetivo: pide repeticiones')
+        pg.click('section.ex.open [data-a=del-set]')
+        # cambiar solo las reps respeta lo escrito
+        pg.fill('section.ex.open input[data-f=w][data-j="1"]', '')
+        pg.fill('section.ex.open input[data-f=r][data-j="1"]', '9')
+        pg.click('section.ex.open .chk >> nth=1')
+        s1 = pg.evaluate('() => window.__gym.state.active.entries[0].sets[1]')
+        check(s1['done'] and s1['r'] == 9 and s1['w'] == 85, 'Reps escritas se respetan, peso vacío = objetivo: %s' % s1)
+        pg.click('section.ex.open .chk >> nth=1')
 
         # rellenar 3 series del primer ejercicio (8 reps al tope sube? no: 12 en la 2ª y 3ª)
         reps = ['8', '12', '12']

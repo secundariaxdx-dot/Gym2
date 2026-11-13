@@ -510,7 +510,7 @@
       '<section class="card pad"><h2>Fútbol y correr</h2><label class="switch"><span>Cuentan (poco) en la fatiga de piernas</span><input type="checkbox" data-f="actFatigue"' + (state.settings.actFatigue !== false ? ' checked' : '') + '></label></section>' +
       '<section class="card pad"><h2>Instalar en el iPhone</h2><p class="muted small">En Safari: botón Compartir → «Añadir a pantalla de inicio». Así se abre a pantalla completa y los datos se conservan.</p></section>' +
       '<section class="card pad"><h2>Datos iniciales</h2><p class="muted small">Vuelve a cargar tus 17 ejercicios con la última sesión de las capturas. Borra tu historial.</p><button class="btn danger" data-a="reset">Restaurar datos iniciales</button></section>' +
-      '<div class="muted small center" id="ver">Versión 1.4 ({{VER}}) · progresión al fallo con doble progresión</div>';
+      '<div class="muted small center" id="ver">Versión 1.5 ({{VER}}) · progresión al fallo con doble progresión</div>';
   }
 
   /* ---------- modales ---------- */
@@ -720,6 +720,12 @@
       case 'done': {
         var e = act.entries[i], s = e.sets[j];
         if (s.done) { s.done = false; s.pr = false; save(); render(); break; }
+        // Sin reps escritas: vale el objetivo que se muestra (y su peso si el campo está vacío)
+        var pj = e.plan && e.plan[j];
+        if (pj && pj.r > 0) {
+          if (String(s.r).trim() === '') s.r = pj.r;
+          if (String(s.w).trim() === '' && pj.w > 0) s.w = pj.w;
+        }
         var w = num(s.w), r = num(s.r), exr = exById(e.exId);
         var wOk = !isNaN(w) || (exr && exr.equip === 'corporal');
         if (!(r > 0) || !wOk) { var row = $('[data-row="' + i + '-' + j + '"]'); if (row) { row.classList.remove('err'); void row.offsetWidth; row.classList.add('err'); } toast('Anota peso y repeticiones'); break; }

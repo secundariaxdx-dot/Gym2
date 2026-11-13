@@ -1,5 +1,5 @@
 import os, json
-CACHE = 'gym-v6'  # súbelo cuando cambie algo que el iPhone deba recargar (se muestra en Ajustes)
+CACHE = 'gym-v7'  # súbelo cuando cambie algo que el iPhone deba recargar (se muestra en Ajustes)
 from PIL import Image, ImageDraw
 root = os.path.dirname(os.path.abspath(__file__))
 src, dist = os.path.join(root, 'src'), root  # la web se genera en la raíz: GitHub Pages la sirve desde ahí

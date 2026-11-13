@@ -35,5 +35,5 @@ Idioma de la app y de la conversación: español.
 - Fútbol 36 h y running 24 h de fatiga en piernas; solo se marca el día en el calendario.
 
 ## Versiones
-v1.0 núcleo · v1.1 temporizador persistente + offline · v1.2 calendario, análisis, récords · v1.3 biblioteca 122 ejercicios y rutinas · v1.4 sonidos (clic al marcar serie, aviso al acabar el descanso, botón 🔊/🔇 = settings.sound; audioSession 'ambient' para no cortar la música).
-Siguiente caché: gym-v7 (variable CACHE arriba en build.py; se ve en Ajustes). El SW descarga sin caché HTTP y la app se recarga sola al activarse una versión nueva. Los sonidos solo suenan con la app abierta: iOS congela la PWA en segundo plano y aviso con la app cerrada requeriría Web Push con servidor. Pendiente posible: pasos de Apple Health (requeriría app nativa).
+v1.0 núcleo · v1.1 temporizador persistente + offline · v1.2 calendario, análisis, récords · v1.3 biblioteca 122 ejercicios y rutinas · v1.4 sonidos (clic al marcar serie, aviso al acabar el descanso, botón 🔊/🔇 = settings.sound; audioSession 'ambient' para no cortar la música) · v1.5 marcar serie sin escribir = objetivo (reps y peso vacíos toman el objetivo).
+Siguiente caché: gym-v8 (variable CACHE arriba en build.py; se ve en Ajustes). El SW descarga sin caché HTTP y la app se recarga sola al activarse una versión nueva. Los sonidos solo suenan con la app abierta: iOS congela la PWA en segundo plano y aviso con la app cerrada requeriría Web Push con servidor. Pendiente posible: pasos de Apple Health (requeriría app nativa).
