@@ -1,0 +1,15 @@
+name = "gym-push"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[vars]
+VAPID_SUB = "https://secundariaxdx-dot.github.io/Gym2/"
+
+[[durable_objects.bindings]]
+name = "REST"
+class_name = "Rest"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Rest"]

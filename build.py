@@ -1,5 +1,5 @@
 import os, json
-CACHE = 'gym-v7'  # súbelo cuando cambie algo que el iPhone deba recargar (se muestra en Ajustes)
+CACHE = 'gym-v8'  # súbelo cuando cambie algo que el iPhone deba recargar (se muestra en Ajustes)
 from PIL import Image, ImageDraw
 root = os.path.dirname(os.path.abspath(__file__))
 src, dist = os.path.join(root, 'src'), root  # la web se genera en la raíz: GitHub Pages la sirve desde ahí
@@ -8,7 +8,10 @@ rd = lambda n: open(os.path.join(src, n), encoding='utf-8').read()
 html = rd('template.html')
 for key, f in (('{{CSS}}', 'style.css'), ('{{ENGINE}}', 'engine.js'), ('{{SEED}}', 'seed.js'), ('{{LIB}}', 'library.js'), ('{{APP}}', 'app.js')):
     html = html.replace(key, rd(f))
-html = html.replace('{{VER}}', CACHE)
+# Servidor de avisos (push/): URL del Worker desplegado y clave pública VAPID
+PUSH_URL = ''
+PUSH_KEY = 'BBlqNdvPtv93oxTx8Zr10Yi5ZeNHb3uGzCIo_174AAwCttp-vr9gp0KIeTGiJwDEUX5ZqSUgGg73nZD1aUXJEyU'
+html = html.replace('{{VER}}', CACHE).replace('{{PUSH_URL}}', PUSH_URL).replace('{{PUSH_KEY}}', PUSH_KEY)
 open(os.path.join(dist, 'index.html'), 'w', encoding='utf-8').write(html)
 
 manifest = {
@@ -29,6 +32,14 @@ self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c =>
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 // Caché primero: abre al instante aunque la señal sea mala. Se actualiza en segundo plano
 // y la versión nueva se ve la siguiente vez que abres la app.
+// Aviso de fin de descanso (el servidor manda un push vacío; aquí se pone el texto)
+self.addEventListener('push', e => {
+  e.waitUntil(self.registration.showNotification('⏱️ Descanso terminado', { body: 'A por la siguiente serie 💪', tag: 'rest', renotify: true, icon: 'icon-192.png' }));
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => cs.length ? cs[0].focus() : self.clients.openWindow('./')));
+});
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   e.respondWith(caches.open(CACHE).then(async c => {

@@ -2,3 +2,5 @@ test/shots/
 __pycache__/
 node_modules/
 shots/
+push/.dev.vars
+push/.wrangler/

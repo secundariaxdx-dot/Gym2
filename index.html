@@ -765,7 +765,72 @@ body.has-timer #toast { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) 
   function startTimer(ex) {
     var rest = E.restFor(ex || {});
     timer = { end: Date.now() + rest * 1000, total: rest, fired: false };
-    save(); updateTimer();
+    save(); updateTimer(); pushSync();
+  }
+  function clearTimer() { if (timer && timer.armed) pushStop(); timer = null; }
+
+  /* ---------- aviso con la app cerrada (Web Push vía servidor gym-push) ---------- */
+  var PUSH = window.__GYM_PUSH || { url: '', key: 'BBlqNdvPtv93oxTx8Zr10Yi5ZeNHb3uGzCIo_174AAwCttp-vr9gp0KIeTGiJwDEUX5ZqSUgGg73nZD1aUXJEyU' };
+  if (/\{\{/.test(PUSH.url)) PUSH.url = '';
+  function noop() { }
+  function pushSupported() { return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; }
+  function pushReady() { return state.settings.push === true && !!state.settings.pushId && !!PUSH.url; }
+  function pushCall(path, body, keep) {
+    body.id = state.settings.pushId;
+    // text/plain = petición simple, sin preflight (más rápida y compatible con keepalive)
+    return fetch(PUSH.url + path, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(body), keepalive: !!keep })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status)); return j; }); });
+  }
+  // Programa el aviso para el final del descanso. Con la app delante, se anula 2,5 s antes y suena el pitido de la app.
+  function pushSync(keep) {
+    if (!pushReady()) return;
+    var want = !!timer && !timer.fired && soundOn() && (document.hidden || timer.end - Date.now() > 2500);
+    if (want) {
+      if (timer.armed === timer.end) return;
+      var t = timer; t.armed = t.end; save();
+      pushCall('/arm', { at: t.end }, keep).catch(function () { if (t.armed === t.end) t.armed = 0; });
+    } else if (timer && timer.armed) { timer.armed = 0; save(); pushCall('/cancel', {}, keep).catch(noop); }
+  }
+  function pushStop() { if (pushReady()) pushCall('/cancel', {}).catch(noop); }
+  function b64uBytes(s) { var b = atob(s.replace(/-/g, '+').replace(/_/g, '/')), a = new Uint8Array(b.length); for (var k = 0; k < b.length; k++) a[k] = b.charCodeAt(k); return a; }
+  function newPushId() { var a = new Uint8Array(16); crypto.getRandomValues(a); return Array.prototype.map.call(a, function (x) { return ('0' + x.toString(16)).slice(-2); }).join(''); }
+  function pushSubscribe(reg) {
+    var key = b64uBytes(PUSH.key);
+    return reg.pushManager.getSubscription().then(function (old) {
+      return old ? old.unsubscribe().catch(noop).then(function () { return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }); })
+        : reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+    });
+  }
+  function enablePush() {
+    function fail(msg) { state.settings.push = false; save(); render(); toast(msg); }
+    if (!PUSH.url) return fail('Aviso no configurado');
+    if (!pushSupported()) return fail('Abre la app desde el icono de inicio para activar el aviso');
+    var perm;
+    try { perm = Notification.requestPermission(); } catch (e) { return fail('No se pudo pedir permiso'); }
+    Promise.resolve(perm).then(function (p) {
+      if (p !== 'granted') throw new Error('perm');
+      return navigator.serviceWorker.ready;
+    }).then(pushSubscribe).then(function (sub) {
+      if (!state.settings.pushId) state.settings.pushId = newPushId();
+      return pushCall('/sub', { sub: sub.toJSON() });
+    }).then(function () {
+      state.settings.push = true; save(); render(); toast('Aviso activado'); pushSync();
+    }).catch(function (e) {
+      fail(e && e.message === 'perm' ? 'Permiso denegado: actívalo en Ajustes del iPhone › Notificaciones › Gym' : 'No se pudo activar el aviso (¿sin internet?)');
+    });
+  }
+  // Al abrir: renueva la suscripción en el servidor (o avisa si iOS la ha retirado)
+  function pushRefresh() {
+    if (!pushReady() || !pushSupported()) return;
+    navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (sub) {
+      if (!sub) { state.settings.push = false; save(); render(); toast('El aviso con la app cerrada se ha desactivado; vuelve a activarlo en Ajustes'); return; }
+      return pushCall('/sub', { sub: sub.toJSON() }).then(function () { pushSync(); });
+    }).catch(noop);
+  }
+  function closeRestNotes() {
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.getRegistration().then(function (reg) { return reg && reg.getNotifications ? reg.getNotifications({ tag: 'rest' }) : []; })
+      .then(function (ns) { (ns || []).forEach(function (n) { n.close(); }); }).catch(noop);
   }
   var audio = null;
   var sounds = []; // registro para los tests: qué sonidos se han pedido
@@ -803,6 +868,7 @@ body.has-timer #toast { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) 
     if (!timer) { el.hidden = true; document.body.classList.remove('has-timer'); return; }
     var left = (timer.end - Date.now()) / 1000;
     el.hidden = false; document.body.classList.add('has-timer');
+    if (timer.armed && !document.hidden && left <= 2.5) pushSync();
     if (left <= 0) {
       if (!timer.fired) { timer.fired = true; beep(); }
       if (-left > 5) { timer = null; save(); el.hidden = true; document.body.classList.remove('has-timer'); return; }
@@ -1190,10 +1256,11 @@ body.has-timer #toast { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) 
       '<div class="r-btns"><button class="btn" data-a="import-file">Importar archivo</button><button class="btn" data-a="import-paste">Pegar texto</button></div>' +
       '<input id="file" type="file" accept="application/json,.json" hidden></section>' +
       '<section class="card pad"><h2>Descanso</h2><label class="switch"><span>Sonidos (serie hecha y fin del descanso)</span><input type="checkbox" data-f="sound"' + (state.settings.sound !== false ? ' checked' : '') + '></label></section>' +
+      pushSection() +
       '<section class="card pad"><h2>Fútbol y correr</h2><label class="switch"><span>Cuentan (poco) en la fatiga de piernas</span><input type="checkbox" data-f="actFatigue"' + (state.settings.actFatigue !== false ? ' checked' : '') + '></label></section>' +
       '<section class="card pad"><h2>Instalar en el iPhone</h2><p class="muted small">En Safari: botón Compartir → «Añadir a pantalla de inicio». Así se abre a pantalla completa y los datos se conservan.</p></section>' +
       '<section class="card pad"><h2>Datos iniciales</h2><p class="muted small">Vuelve a cargar tus 17 ejercicios con la última sesión de las capturas. Borra tu historial.</p><button class="btn danger" data-a="reset">Restaurar datos iniciales</button></section>' +
-      '<div class="muted small center" id="ver">Versión 1.5 (gym-v7) · progresión al fallo con doble progresión</div>';
+      '<div class="muted small center" id="ver">Versión 1.6 (gym-v8) · progresión al fallo con doble progresión</div>';
   }
 
   /* ---------- modales ---------- */
@@ -1270,6 +1337,14 @@ body.has-timer #toast { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) 
   function ask(title, text, yes, fn, danger) { openModal({ type: 'confirm', title: title, text: text, yes: yes, fn: fn, danger: danger }); }
 
   /* ---------- render ---------- */
+  function pushSection() {
+    var on = pushReady(), standalone = window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+    var h = '<section class="card pad" id="push-sec"><h2>Aviso con la app cerrada</h2><label class="switch"><span>Notificación al acabar el descanso</span><input type="checkbox" data-f="push"' + (on ? ' checked' : '') + (PUSH.url ? '' : ' disabled') + '></label>' +
+      '<p class="muted small">Te avisa aunque el iPhone esté bloqueado o estés en otra app. Suena el tono de notificaciones de iOS (en modo silencio solo vibra) y necesita internet. Con la app delante suena el pitido de la app. El botón 🔇 también lo silencia.</p>';
+    if (!pushSupported() && !standalone) h += '<p class="muted small">Para activarlo, abre la app desde el icono de la pantalla de inicio.</p>';
+    if (on) h += '<button class="btn" data-a="push-test">Probar: bloquea el iPhone tras pulsar</button>';
+    return h + '</section>';
+  }
   function muteIcon() { return soundOn() ? '🔊' : '🔇'; }
   function syncMute() {
     document.querySelectorAll('.mute-b').forEach(function (b) { b.textContent = muteIcon(); b.classList.toggle('off', !soundOn()); b.setAttribute('aria-pressed', soundOn() ? 'false' : 'true'); });
@@ -1344,7 +1419,7 @@ body.has-timer #toast { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) 
     try { sess.analysis = E.analyzeSession(sess, exMap(), state.sessions); } catch (e) { sess.analysis = null; }
     if (saveRoutine && state.routines[a.key]) state.routines[a.key].ids = a.entries.map(function (e) { return e.exId; }).filter(exById);
     var min = Math.max(1, Math.round((now - a.t0) / 60000));
-    state.active = null; timer = null; unwake(); save();
+    state.active = null; clearTimer(); unwake(); save();
     openModal({ type: 'summary', sets: total, min: min, prs: prs, sid: sess.id });
     render();
     if (prs.length) setTimeout(function () { confetti(); fanfare(); }, 250);
@@ -1368,12 +1443,13 @@ body.has-timer #toast { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) 
     var d; try { d = JSON.parse(txt); } catch (e) { toast('El texto no es una copia válida'); return; }
     if (!d || d.v !== 1 || !Array.isArray(d.exercises) || !d.routines || !Array.isArray(d.sessions)) { toast('El archivo no es una copia de Gym'); return; }
     ask('Importar copia', 'Esto reemplaza todos los datos actuales (' + d.sessions.length + ' sesiones en la copia).', 'Importar', function () {
-      d.active = null; d.timer = null; d.activities = d.activities || []; d.settings = d.settings || { sound: true, lastBackup: 0, actFatigue: true }; state = d; timer = null; unwake(); save(); closeModal(); ui.tab = 'hoy'; render(); toast('Copia importada');
+      d.active = null; d.timer = null; d.activities = d.activities || []; d.settings = d.settings || { sound: true, lastBackup: 0, actFatigue: true }; var ps = state.settings; clearTimer(); state = d; state.settings.push = ps.push; state.settings.pushId = ps.pushId; unwake(); save(); closeModal(); ui.tab = 'hoy'; render(); toast('Copia importada');
     }, true);
   }
 
   document.addEventListener('pointerdown', unlockAudio, { once: false, passive: true });
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) { unlockAudio(); updateTimer(); } });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { unlockAudio(); updateTimer(); closeRestNotes(); } else pushSync(true); });
+  window.addEventListener('pagehide', function () { pushSync(true); });
 
   document.addEventListener('click', function (ev) {
     var t = ev.target;
@@ -1393,10 +1469,14 @@ body.has-timer #toast { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) 
         if (exa && !it.applied) { exa.sets = Math.max(1, Math.min(6, (exa.sets || 1) + it.delta)); it.applied = true; save(); renderModal(); toast(exa.name + ': ' + exa.sets + ' series'); }
         break;
       }
-      case 't-m': if (timer) { timer.end -= 15000; timer.total = Math.max(1, timer.total - 15); save(); updateTimer(); } break;
-      case 't-p': if (timer) { timer.end += 15000; timer.total += 15; timer.fired = false; save(); updateTimer(); } break;
-      case 't-x': timer = null; save(); updateTimer(); break;
-      case 'mute': state.settings.sound = !soundOn(); save(); syncMute(); if (soundOn()) play('tick'); toast(soundOn() ? 'Sonido activado' : 'Sonido silenciado'); break;
+      case 't-m': if (timer) { timer.end -= 15000; timer.total = Math.max(1, timer.total - 15); save(); updateTimer(); pushSync(); } break;
+      case 't-p': if (timer) { timer.end += 15000; timer.total += 15; timer.fired = false; save(); updateTimer(); pushSync(); } break;
+      case 't-x': clearTimer(); save(); updateTimer(); break;
+      case 'mute': state.settings.sound = !soundOn(); save(); syncMute(); pushSync(); if (soundOn()) play('tick'); toast(soundOn() ? 'Sonido activado' : 'Sonido silenciado'); break;
+      case 'push-test':
+        if (!pushReady()) break;
+        pushCall('/arm', { at: Date.now() + 8000 }).then(function () { toast('Bloquea el iPhone: el aviso llega en 8 s'); }).catch(function (e) { toast('Error: ' + e.message); });
+        break;
       case 'confirm-yes': var fn = ui.modal.fn; if (fn) fn(); break;
       case 'start': startWorkout(el.getAttribute('data-k')); break;
       case 'toggle': act.open = act.open === i ? -1 : i; save(); render(); break;
@@ -1444,7 +1524,7 @@ body.has-timer #toast { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) 
         openModal({ type: 'finish', done: done, pending: pending, diff: diff }); break;
       }
       case 'finish-yes': { var chk = $('#f-saver'); var sv = chk && chk.checked; closeModal(); doFinish(sv); break; }
-      case 'discard': ask('Descartar entreno', 'Se pierde lo anotado en esta sesión.', 'Descartar', function () { state.active = null; timer = null; unwake(); save(); closeModal(); render(); }, true); break;
+      case 'discard': ask('Descartar entreno', 'Se pierde lo anotado en esta sesión.', 'Descartar', function () { state.active = null; clearTimer(); unwake(); save(); closeModal(); render(); }, true); break;
       case 'pick': {
         var id = el.getAttribute('data-id'), exp = exById(id) || adoptLib(id), m = ui.modal;
         if (!exp) break;
@@ -1516,7 +1596,7 @@ body.has-timer #toast { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) 
       case 'import-file': $('#file').click(); break;
       case 'import-paste': openModal({ type: 'paste' }); break;
       case 'paste-yes': importText($('#paste').value); break;
-      case 'reset': ask('Restaurar datos iniciales', 'Se borran tu historial y los cambios hechos a ejercicios y rutinas.', 'Restaurar', function () { state = fresh(); timer = null; unwake(); save(); closeModal(); ui.tab = 'hoy'; render(); toast('Datos iniciales restaurados'); }, true); break;
+      case 'reset': ask('Restaurar datos iniciales', 'Se borran tu historial y los cambios hechos a ejercicios y rutinas.', 'Restaurar', function () { var ps = state.settings; clearTimer(); state = fresh(); state.settings.push = ps.push; state.settings.pushId = ps.pushId; unwake(); save(); closeModal(); ui.tab = 'hoy'; render(); toast('Datos iniciales restaurados'); }, true); break;
     }
   });
 
@@ -1532,7 +1612,8 @@ body.has-timer #toast { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) 
   });
   document.addEventListener('change', function (ev) {
     var t = ev.target;
-    if (t.getAttribute && t.getAttribute('data-f') === 'sound') { state.settings.sound = t.checked; save(); syncMute(); }
+    if (t.getAttribute && t.getAttribute('data-f') === 'sound') { state.settings.sound = t.checked; save(); syncMute(); pushSync(); }
+    else if (t.getAttribute && t.getAttribute('data-f') === 'push') { if (t.checked) enablePush(); else { if (timer && timer.armed) { pushStop(); timer.armed = 0; } state.settings.push = false; save(); render(); } }
     else if (t.getAttribute && t.getAttribute('data-f') === 'actFatigue') { state.settings.actFatigue = t.checked; save(); }
     else if (t.id === 'file' && t.files && t.files[0]) { var rd = new FileReader(); rd.onload = function () { importText(String(rd.result)); }; rd.readAsText(t.files[0]); t.value = ''; }
     else if (t.id === 'f-equip' && ui.modal && ui.modal.type === 'exedit' && ui.modal.isNew && !ui.modal.stepTouched) { $('#f-step').value = fmt(STEP_DEFAULT[t.value] || 2.5); $('#f-unit').value = 'kg'; }
@@ -1546,6 +1627,7 @@ body.has-timer #toast { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) 
   /* ---------- arranque ---------- */
   render();
   if (state.active) wake();
+  pushRefresh(); closeRestNotes();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     // Versión nueva: se recarga sola (si estás en mitad de un entreno, al volver a la app; los datos ya están guardados)
     var hadSW = !!navigator.serviceWorker.controller, reloadPending = false, swReg = null;
