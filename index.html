@@ -229,8 +229,11 @@ body.has-wprog { --wp: 26px; }
 .chart-box { padding: 4px 0 6px; }
 .chart-sum { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
 .chart-sum b { color: var(--text); }
-select.musc { width: 100%; font: inherit; font-weight: 600; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--input); color: var(--text); margin: 4px 0 8px; }
+select.musc { flex: 1; min-width: 0; width: 100%; font: inherit; font-weight: 600; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--input); color: var(--text); margin: 4px 0 8px; }
 #wprog[hidden] { display: none; }
+.musc-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.musc-row select.musc { margin: 0; }
+.musc-row .btn { white-space: nowrap; min-height: 44px; }
 
 </style>
 </head>
@@ -1338,7 +1341,10 @@ select.musc { width: 100%; font: inherit; font-weight: 600; padding: 10px 12px; 
     state.sessions.forEach(function (s) { if (!s.activity) s.exercises.forEach(function (e) { if (e.muscle) used[e.muscle] = 1; }); });
     var list = MUSCLES.concat(Object.keys(used).filter(function (m) { return MUSCLES.indexOf(m) < 0; }));
     var m = ui.progM || list.filter(function (x) { return used[x]; })[0] || list[0];
-    var h = '<select class="musc" data-f="progM" aria-label="Grupo muscular">' + list.map(function (x) { return '<option value="' + esc(x) + '"' + (x === m ? ' selected' : '') + '>' + esc(x) + (used[x] ? '' : ' (sin datos)') + '</option>'; }).join('') + '</select>';
+    var openM = !!ui.progMOpen;
+    var h = '<div class="musc-row"><select class="musc" data-f="progM" aria-label="Grupo muscular">' + list.map(function (x) { return '<option value="' + esc(x) + '"' + (x === m ? ' selected' : '') + '>' + esc(x) + (used[x] ? '' : ' (sin datos)') + '</option>'; }).join('') + '</select>' +
+      '<button class="btn sm' + (openM ? '' : ' primary') + '" data-a="musc-tog" aria-expanded="' + openM + '">' + (openM ? 'Ocultar' : 'Ver gráficos') + '</button></div>';
+    if (!openM) return h;
     var sets = weeks.map(function () { return 0; }), vol = weeks.map(function () { return 0; }), exs = {};
     state.sessions.forEach(function (s) {
       if (s.activity || s.t < weeks[0] || s.t > now) return;
@@ -1375,25 +1381,6 @@ select.musc { width: 100%; font: inherit; font-weight: 600; padding: 10px 12px; 
   function viewProg() {
     var now = Date.now();
     var h = '<header class="top"><h1>Progreso</h1></header>';
-    // Récords
-    h += '<h3 class="sec">Récords personales</h3>';
-    var rows = [];
-    var recent = {};
-    state.sessions.forEach(function (s) { (s.prs || []).forEach(function (p) { if (now - s.t < 14 * 86400000) recent[p.exId] = s.t; }); });
-    state.exercises.forEach(function (ex) {
-      var best = null;
-      E.history(ex, state.sessions).forEach(function (hh) { hh.sets.forEach(function (s) { if (s.w > 0 && s.r > 0 && s.r <= 15) { var v = E.e1rm(s.w, s.r); if (!best || v > best.v) best = { v: v, w: s.w, r: s.r, t: hh.t }; } }); });
-      if (best) rows.push({ ex: ex, best: best, recent: recent[ex.id] });
-    });
-    rows.sort(function (a, b) { return (b.recent || 0) - (a.recent || 0) || a.ex.name.localeCompare(b.ex.name); });
-    h += '<div class="muted small pad">Toca un ejercicio para ver su gráfico.</div>';
-    h += rows.length ? '<div class="card list">' + rows.map(function (r) {
-      var open = ui.progEx === r.ex.id;
-      return '<div class="li col' + (open ? ' open' : '') + '"><button class="prog-ex li-row" data-a="prog-ex" data-id="' + esc(r.ex.id) + '" aria-expanded="' + open + '"><div><div class="ex-name">' + esc(r.ex.name) + '</div><div class="muted small">1RM estimado ' + fmt(r.best.v) + ' kg</div></div><div class="right">' + (r.recent ? '<span class="chip ok">Nuevo</span> ' : '') + '<b>' + fmt(r.best.w) + ' × ' + r.best.r + '</b></div></button>' +
-        (open ? exChartHtml(r.ex) : '') + '</div>';
-    }).join('') + '</div>' : '<div class="empty">Aún no hay datos.</div>';
-    // Por grupo muscular
-    h += '<h3 class="sec">Por grupo muscular</h3>' + muscleProgHtml();
     // Fatiga
     h += '<h3 class="sec">Fatiga y descanso</h3>';
     var fs = E.fatigueSummary(fatigueSessions(), now);
@@ -1406,6 +1393,27 @@ select.musc { width: 100%; font: inherit; font-weight: 600; padding: 10px 12px; 
           '<div class="meter" title="Carga 7 días frente a tu media"><i style="width:' + Math.round(f.l7 / maxL * 100) + '%"></i><b style="left:' + Math.round(f.avg / maxL * 100) + '%"></b></div></div>';
       }).join('') + '</div><div class="muted small pad">La barra es la carga de los últimos 7 días (series × fatiga del ejercicio). La marca es tu media semanal de las 4 semanas anteriores.</div>';
     }
+    // Por grupo muscular
+    h += '<h3 class="sec">Por grupo muscular</h3>' + muscleProgHtml();
+    // Récords
+    h += '<h3 class="sec">Récords personales</h3>';
+    var rows = [];
+    var recent = {};
+    state.sessions.forEach(function (s) { (s.prs || []).forEach(function (p) { if (now - s.t < 14 * 86400000) recent[p.exId] = s.t; }); });
+    state.exercises.forEach(function (ex) {
+      var best = null;
+      E.history(ex, state.sessions).forEach(function (hh) { hh.sets.forEach(function (s) { if (s.w > 0 && s.r > 0 && s.r <= 15) { var v = E.e1rm(s.w, s.r); if (!best || v > best.v) best = { v: v, w: s.w, r: s.r, t: hh.t }; } }); });
+      var reps = 0;
+      if (!best) E.history(ex, state.sessions).forEach(function (hh) { hh.sets.forEach(function (s) { reps = Math.max(reps, s.r || 0); }); });
+      rows.push({ ex: ex, best: best, reps: reps, recent: recent[ex.id] });
+    });
+    rows.sort(function (a, b) { return (b.recent || 0) - (a.recent || 0) || (b.best || b.reps ? 1 : 0) - (a.best || a.reps ? 1 : 0) || a.ex.name.localeCompare(b.ex.name); });
+    h += '<div class="muted small pad">Toca un ejercicio para ver su gráfico.</div>';
+    h += rows.length ? '<div class="card list">' + rows.map(function (r) {
+      var open = ui.progEx === r.ex.id;
+      return '<div class="li col' + (open ? ' open' : '') + '"><button class="prog-ex li-row" data-a="prog-ex" data-id="' + esc(r.ex.id) + '" aria-expanded="' + open + '"><div><div class="ex-name">' + esc(r.ex.name) + '</div><div class="muted small">' + (r.best ? '1RM estimado ' + fmt(r.best.v) + ' kg' : r.reps ? 'Sin peso' : 'Sin datos todavía') + '</div></div><div class="right">' + (r.recent ? '<span class="chip ok">Nuevo</span> ' : '') + (r.best ? '<b>' + fmt(r.best.w) + ' × ' + r.best.r + '</b>' : r.reps ? '<b>' + r.reps + ' reps</b>' : '<span class="muted">—</span>') + '</div></button>' +
+        (open ? exChartHtml(r.ex) : '') + '</div>';
+    }).join('') + '</div>' : '<div class="empty">Aún no hay datos.</div>';
     // Historial
     h += '<h3 class="sec">Historial</h3>';
     var ss = state.sessions.slice().sort(function (a, b) { return b.t - a.t; });
@@ -1434,7 +1442,7 @@ select.musc { width: 100%; font: inherit; font-weight: 600; padding: 10px 12px; 
       '<section class="card pad"><h2>Fútbol y correr</h2><label class="switch"><span>Cuentan (poco) en la fatiga de piernas</span><input type="checkbox" data-f="actFatigue"' + (state.settings.actFatigue !== false ? ' checked' : '') + '></label></section>' +
       '<section class="card pad"><h2>Instalar en el iPhone</h2><p class="muted small">En Safari: botón Compartir → «Añadir a pantalla de inicio». Así se abre a pantalla completa y los datos se conservan.</p></section>' +
       '<section class="card pad"><h2>Datos iniciales</h2><p class="muted small">Vuelve a cargar tus 17 ejercicios con la última sesión de las capturas. Borra tu historial.</p><button class="btn danger" data-a="reset">Restaurar datos iniciales</button></section>' +
-      '<div class="muted small center" id="ver">Versión 1.7 (gym-v9) · progresión al fallo con doble progresión</div>';
+      '<div class="muted small center" id="ver">Versión 1.8 (gym-v10) · progresión al fallo con doble progresión</div>';
   }
 
   /* ---------- modales ---------- */
@@ -1779,6 +1787,7 @@ select.musc { width: 100%; font: inherit; font-weight: 600; padding: 10px 12px; 
       }
       case 'r-rm': state.routines[ui.modal.key].ids.splice(i, 1); save(); renderModal(); render(); break;
       case 'r-add': openModal({ type: 'pick', ctx: 'routine', key: ui.modal.key }); break;
+      case 'musc-tog': ui.progMOpen = !ui.progMOpen; render(); break;
       case 'prog-ex': ui.progEx = ui.progEx === el.getAttribute('data-id') ? null : el.getAttribute('data-id'); render(); break;
       case 'hist': ui.histOpen = ui.histOpen === el.getAttribute('data-id') ? null : el.getAttribute('data-id'); render(); break;
       case 'del-sess': { var sid = el.getAttribute('data-id'); ask('Borrar sesión', 'Se elimina del historial y de los cálculos.', 'Borrar', function () { state.sessions = state.sessions.filter(function (x) { return x.id !== sid; }); ui.histOpen = null; save(); closeModal(); render(); }, true); break; }

@@ -100,26 +100,38 @@ try:
         # --- Grupo muscular
         opts = pg.locator('select.musc option').all_inner_texts()
         check(len(opts) >= 15 and any(o.startswith('Pecho') for o in opts) and any(o.startswith('Gemelos') for o in opts), 'Desplegable con todos los grupos (%d)' % len(opts))
+        # orden: fatiga, grupo muscular, récords, historial
+        secs = [x.strip().lower() for x in pg.locator('h3.sec').all_inner_texts()]
+        check(secs == ['fatiga y descanso', 'por grupo muscular', 'récords personales', 'historial'], 'Orden de secciones: %s' % secs)
+        # récords: todos los ejercicios (17), también sin datos
+        check(pg.locator('[data-a=prog-ex]').count() == len(pg.evaluate('() => window.__gym.state.exercises')), 'Récords: aparecen todos los ejercicios (%d)' % pg.locator('[data-a=prog-ex]').count())
+        # gráficos ocultos hasta pulsar el botón
         pg.select_option('select.musc', 'Dorsales')
-        sec = pg.locator('select.musc + section')
+        check(pg.locator('.musc-row + section').count() == 0 and pg.inner_text('[data-a=musc-tog]') == 'Ver gráficos', 'Gráficos del grupo ocultos por defecto')
+        pg.click('[data-a=musc-tog]')
+        check(pg.inner_text('[data-a=musc-tog]') == 'Ocultar', 'Botón cambia a Ocultar')
+        sec = pg.locator('.musc-row + section')
         check(sec.locator('.chart').count() == 2, 'Dorsales: gráficos de series y volumen')
         bars = sec.locator('.chart').first.locator('path.bar').count()
         check(bars >= 8, 'Barras de las semanas con datos: %d' % bars)
         tip = sec.locator('.chart-tip').first.inner_text()
         check('series' in tip and not tip.endswith(' 0 series'), 'Tip inicial = última semana con datos: ' + tip)
         # 3 series de jalón + mitad de 2 de remo = 4 por semana
-        sx = pg.evaluate("() => JSON.parse(document.querySelector('select.musc + section .chart').getAttribute('data-tips'))")
+        sx = pg.evaluate("() => JSON.parse(document.querySelector('.musc-row + section .chart').getAttribute('data-tips'))")
         check(any('<b>4 series</b>' in t for t in sx), 'Cuenta directas + ½ secundarias (4/semana)')
         check('Jalón' in sec.inner_text() and '→' in sec.inner_text(), 'Lista de fuerza de los ejercicios del grupo')
         sec.scroll_into_view_if_needed(); pg.screenshot(path=OUT + '/62-grafico-musculo.png')
         pg.select_option('select.musc', 'Gemelos')
-        check('Sin series' in pg.locator('select.musc + section').inner_text(), 'Grupo sin datos lo indica')
+        check('Sin series' in pg.locator('.musc-row + section').inner_text(), 'Grupo sin datos lo indica')
+        pg.click('[data-a=musc-tog]')
+        check(pg.locator('.musc-row + section').count() == 0 and pg.inner_text('[data-a=musc-tog]') == 'Ver gráficos', 'Ocultar los esconde')
+        pg.locator('.musc-row').scroll_into_view_if_needed(); pg.screenshot(path=OUT + '/64-progreso-orden.png')
         check(pg.evaluate('() => window.__gym.state.sessions.length') == n_sess, 'No se tocan las sesiones')
 
         # tema claro: el gráfico se lee
         ctx2 = b.new_context(viewport={'width': 375, 'height': 812}, device_scale_factor=2, is_mobile=True, has_touch=True, color_scheme='light')
         p2 = ctx2.new_page(); p2.goto('http://localhost:8772/'); p2.wait_for_selector('.routine'); p2.evaluate(HIST); p2.reload(); p2.wait_for_selector('.routine')
-        p2.click('[data-t=prog]'); p2.click('[data-a=prog-ex][data-id=jalon]'); p2.select_option('select.musc', 'Dorsales')
+        p2.click('[data-t=prog]'); p2.click('[data-a=prog-ex][data-id=jalon]'); p2.select_option('select.musc', 'Dorsales'); p2.click('[data-a=musc-tog]')
         p2.locator('.li.open').scroll_into_view_if_needed(); p2.screenshot(path=OUT + '/63-graficos-claro.png')
         ctx2.close()
         b.close()
