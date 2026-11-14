@@ -84,7 +84,7 @@ try:
         # El silencio persiste tras reiniciar y se refleja en Ajustes
         pg.reload(); pg.wait_for_selector('header.top h1')
         check(snd_off('header.top .mute-b'), 'Silencio persiste tras reiniciar')
-        pg.click('[data-t=aj]'); pg.wait_for_selector('[data-f=sound]')
+        pg.click('[data-t=perfil]'); pg.click('[data-t=aj]'); pg.wait_for_selector('[data-f=sound]')
         check(not pg.is_checked('[data-f=sound]'), 'Ajustes refleja el silencio (mismo ajuste settings.sound)')
         pg.click('[data-f=sound]')
         check(pg.evaluate('() => window.__gym.state.settings.sound') is True, 'Reactivar desde Ajustes')

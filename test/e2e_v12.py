@@ -49,10 +49,10 @@ try:
         legs = pg.locator('.routine').nth(2).inner_text()
         check('Isquios' in legs or 'Cuádriceps' in legs, 'Piernas avisa tras el fútbol: ' + legs.replace('\n', ' | ')[:90])
         # interruptor en ajustes
-        pg.click('[data-t=aj]'); pg.click('[data-f=actFatigue]')
+        pg.click('[data-t=perfil]'); pg.click('[data-t=aj]'); pg.click('[data-f=actFatigue]')
         pg.click('[data-t=hoy]'); pg.wait_for_selector('.routine')
         check('Isquios' not in pg.locator('.routine').nth(2).inner_text(), 'Con el interruptor apagado no cuenta')
-        pg.click('[data-t=aj]'); pg.click('[data-f=actFatigue]')
+        pg.click('[data-t=perfil]'); pg.click('[data-t=aj]'); pg.click('[data-f=actFatigue]')
 
         # --- Récord al marcar la serie
         pg.click('[data-t=hoy]'); pg.click('[data-a=start][data-k=push]'); pg.wait_for_selector('section.ex.open')
@@ -93,8 +93,8 @@ try:
         pg.click('#modal [data-a=close]')
 
         # Historial muestra el análisis
-        pg.click('[data-t=prog]'); pg.click('[data-a=hist]')
-        check('Mejoras' in pg.locator('#app').inner_text(), 'El análisis queda en el historial')
+        pg.click('[data-t=perfil]'); pg.locator('[data-a=sess]').first.click()
+        check('Mejoras' in pg.locator('#app').inner_text(), 'El análisis queda en el detalle del entreno (Perfil)')
 
         # calendario marca el día de gimnasio
         pg.click('[data-t=cal]'); pg.wait_for_selector('.cal-grid')

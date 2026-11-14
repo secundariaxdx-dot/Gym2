@@ -57,7 +57,7 @@ try:
         pg.wait_for_function('() => navigator.serviceWorker.controller', timeout=10000)
 
         # Activar en Ajustes
-        pg.click('[data-t=aj]'); pg.wait_for_selector('[data-f=push]')
+        pg.click('[data-t=perfil]'); pg.click('[data-t=aj]'); pg.wait_for_selector('[data-f=push]')
         check(not pg.is_checked('[data-f=push]'), 'Aviso desactivado por defecto (datos antiguos intactos)')
         pg.click('[data-f=push]')
         pg.wait_for_function('() => window.__gym.state.settings.push === true', timeout=8000)
@@ -70,7 +70,7 @@ try:
         # Botón de prueba -> push en ~8 s
         pushes.clear(); pg.click('[data-a=push-test]'); time.sleep(10)
         check(len(pushes) == 1, 'Probar: llega 1 push (%d)' % len(pushes))
-        pg.click('[data-t=hoy]'); pg.click('[data-t=aj]'); pg.wait_for_function("() => (document.querySelector('#push-last') || {}).textContent", timeout=5000)
+        pg.click('[data-t=hoy]'); pg.click('[data-t=perfil]'); pg.click('[data-t=aj]'); pg.wait_for_function("() => (document.querySelector('#push-last') || {}).textContent", timeout=5000)
         check('entregado' in pg.inner_text('#push-last'), 'Ajustes muestra el último envío: ' + pg.inner_text('#push-last'))
 
         # Entreno: serie hecha -> se programa; app en segundo plano -> llega al final
@@ -142,7 +142,7 @@ try:
         check(True, 'Suscripción retirada: se desactiva el ajuste')
         # Desactivar a mano
         pg.evaluate('() => { window.__hasSub = true; }')
-        pg.click('[data-t=aj]'); pg.click('[data-f=push]'); pg.wait_for_function('() => window.__gym.state.settings.push === true', timeout=8000)
+        pg.click('[data-t=perfil]'); pg.click('[data-t=aj]'); pg.click('[data-f=push]'); pg.wait_for_function('() => window.__gym.state.settings.push === true', timeout=8000)
         pg.click('[data-f=push]')
         check(pg.evaluate('() => window.__gym.state.settings.push') is False and pg.locator('[data-a=push-test]').count() == 0, 'Desactivar desde Ajustes')
 
@@ -152,7 +152,7 @@ try:
         pg = ctx.new_page(); pg.on('pageerror', lambda e: errors.append(str(e)))
         pg.goto('http://localhost:8771/'); pg.wait_for_selector('.routine')
         pg.wait_for_function('() => navigator.serviceWorker.controller', timeout=10000)
-        pg.click('[data-t=aj]'); pg.click('[data-f=push]'); pg.wait_for_function('() => window.__gym.state.settings.push === true', timeout=8000)
+        pg.click('[data-t=perfil]'); pg.click('[data-t=aj]'); pg.click('[data-f=push]'); pg.wait_for_function('() => window.__gym.state.settings.push === true', timeout=8000)
         pg.click('[data-t=hoy]'); pg.click('[data-a=start][data-k=push]'); pg.wait_for_selector('header.top h1')
         pg.click('section.ex.open .chk >> nth=0'); time.sleep(0.8)
         note = lambda: pg.evaluate("() => caches.open('gym-meta').then(c => c.match('/__next')).then(r => r && r.json())")

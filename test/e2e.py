@@ -133,7 +133,7 @@ try:
         # ---- Progreso
         pg.click('[data-t=prog]'); pg.wait_for_selector('h3.sec')
         ptxt = pg.locator('#app').inner_text().lower()
-        check('récords personales' in ptxt and 'fatiga y descanso' in ptxt and 'historial' in ptxt, 'Pantalla de progreso completa')
+        check('récords personales' in ptxt and 'fatiga y descanso' in ptxt and 'por grupo muscular' in ptxt, 'Pantalla de progreso completa')
         check('descansando' in ptxt, 'Progreso muestra músculos descansando')
         pg.screenshot(path=OUT + '/08-progreso.png', full_page=True)
 
@@ -174,7 +174,7 @@ try:
         pg.click('[data-a=discard]'); pg.click('[data-a=confirm-yes]')
 
         # ---- ajustes: exportar / importar
-        pg.click('[data-t=aj]'); pg.wait_for_selector('[data-a=backup]')
+        pg.click('[data-t=perfil]'); pg.click('[data-t=aj]'); pg.wait_for_selector('[data-a=backup]')
         pg.screenshot(path=OUT + '/11-ajustes.png', full_page=True)
         data = pg.evaluate('JSON.stringify(window.__gym.state)')
         pg.click('[data-a=import-paste]'); pg.fill('#paste', 'esto no es json'); pg.click('[data-a=paste-yes]')
@@ -182,7 +182,7 @@ try:
         pg.fill('#paste', data.replace('"sessions":[', '"sessions":[', 1)); pg.click('[data-a=paste-yes]')
         pg.wait_for_selector('[data-a=confirm-yes]'); pg.click('[data-a=confirm-yes]')
         check(pg.evaluate('window.__gym.state.sessions.length') == 1, 'Importar copia válida restaura sesiones')
-        pg.click('[data-t=aj]'); pg.wait_for_selector('[data-a=backup]')
+        pg.click('[data-t=perfil]'); pg.click('[data-t=aj]'); pg.wait_for_selector('[data-a=backup]')
         with pg.expect_download() as dl:
             pg.click('[data-a=backup]')
         path = dl.value.path()

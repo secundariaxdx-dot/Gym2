@@ -102,7 +102,7 @@ try:
         check(len(opts) >= 15 and any(o.startswith('Pecho') for o in opts) and any(o.startswith('Gemelos') for o in opts), 'Desplegable con todos los grupos (%d)' % len(opts))
         # orden: fatiga, grupo muscular, récords, historial
         secs = [x.strip().lower() for x in pg.locator('h3.sec').all_inner_texts()]
-        check(secs == ['fatiga y descanso', 'por grupo muscular', 'récords personales', 'historial'], 'Orden de secciones: %s' % secs)
+        check(secs == ['fatiga y descanso', 'por grupo muscular', 'récords personales'], 'Orden de secciones: %s' % secs)
         # récords: todos los ejercicios (17), también sin datos
         check(pg.locator('[data-a=prog-ex]').count() == len(pg.evaluate('() => window.__gym.state.exercises')), 'Récords: aparecen todos los ejercicios (%d)' % pg.locator('[data-a=prog-ex]').count())
         # gráficos ocultos hasta pulsar el botón

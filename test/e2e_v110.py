@@ -142,7 +142,7 @@ try:
         check(pg.locator('section.ex').nth(4).get_attribute('class').find('open') >= 0, 'Se salta el que ya está hecho')
 
         # la vibración experimental se retiró en la v2.0
-        pg.click('[data-t=aj]')
+        pg.click('[data-t=perfil]'); pg.click('[data-t=aj]')
         check(pg.locator('[data-f=haptic]').count() == 0, 'Sin ajuste de vibración')
         sw = pg.locator('[data-f=sound]').bounding_box()
         check(sw['width'] >= 50 and 30 <= sw['height'] <= 32, 'Interruptores con forma de interruptor (%dx%d)' % (sw['width'], sw['height']))
@@ -154,7 +154,7 @@ try:
         pg.wait_for_timeout(500)
         check(pg.evaluate('() => window.__gym.clockOn') is False, 'Reloj parado al terminar el entreno')
         nses = pg.evaluate('() => window.__gym.state.sessions.length')
-        pg.click('[data-t=prog]'); pg.locator('[data-a=hist]').first.click()
+        pg.click('[data-t=perfil]'); pg.locator('[data-a=sess]').first.click()
         pg.click('[data-a=del-sess]'); pg.click('[data-a=confirm-yes]')
         check(pg.evaluate('() => window.__gym.state.sessions.length') == nses - 1, 'Sesión borrada')
         pg.click('#toast [data-a=undo]')
