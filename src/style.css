@@ -364,3 +364,36 @@ h3.sec { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; margin: 26px
 .sd-1 { color: var(--muted); font-size: 13.5px; }
 button.li-btn { width: 100%; appearance: none; background: none; border: 0; border-bottom: 1px solid var(--line); font: inherit; color: inherit; text-align: left; cursor: pointer; }
 button.li-btn:last-child { border-bottom: 0; }
+
+/* ================= v2.2 · fotos y figura de músculos ================= */
+.media { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; border-radius: 16px; margin: 0 0 8px; overscroll-behavior-x: contain; }
+.media::-webkit-scrollbar { display: none; }
+.slide { flex: 0 0 100%; aspect-ratio: 1 / 1; scroll-snap-align: center; scroll-snap-stop: always; border-radius: 16px; overflow: hidden; background: var(--input); position: relative; }
+.slide img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.slide img:not([src]) { visibility: hidden; }
+.slide.fig { background: var(--card); border: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; padding: 12px 14px 10px; }
+.sess .slide.fig { background: color-mix(in srgb, var(--input) 55%, var(--card)); border: 0; }
+.fig-t { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.bm { flex: 1; min-height: 0; width: 100%; margin: 6px 0 4px; }
+.bm-base { fill: color-mix(in srgb, var(--muted) 30%, var(--card)); }
+.bm-m { fill: color-mix(in srgb, var(--muted) 46%, var(--card)); stroke: var(--card); stroke-width: 1.1; stroke-linejoin: round; }
+.sess .bm-m { stroke: color-mix(in srgb, var(--input) 55%, var(--card)); }
+.bm-m.on { fill: var(--accent); }
+.fig-l { width: 100%; display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; color: var(--muted); }
+.fig-l > span:first-child, .fig-l > span:last-child { width: 30%; text-align: center; }
+.fig-sc { display: inline-flex; align-items: center; gap: 4px; font-weight: 500; }
+.fig-sc i { width: 12px; height: 12px; border-radius: 4px; background: var(--accent); }
+.fig-sc i:nth-child(1) { opacity: 0.34; margin-left: 3px; }
+.fig-sc i:nth-child(2) { opacity: 0.67; }
+.fig-sc i:nth-child(3) { margin-right: 3px; }
+.dots { display: flex; justify-content: center; gap: 6px; margin: 0 0 10px; }
+.dots[hidden] { display: none; }
+.dots i { width: 7px; height: 7px; border-radius: 50%; background: color-mix(in srgb, var(--muted) 45%, transparent); transition: background-color 0.2s ease, transform 0.2s ease; }
+.dots i.on { background: var(--accent); transform: scale(1.15); }
+.sess .media { margin: 0 0 8px; }
+.sess .dots { margin-bottom: 8px; }
+.ph-add { display: flex; align-items: center; justify-content: center; gap: 8px; position: relative; cursor: pointer; }
+.ph-add input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.sheet label.ph-add { display: flex; font-size: 16px; color: var(--text); font-weight: 600; margin: 10px 0 0; }
+.sheet label.ph-add input { display: block; position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; opacity: 0; }
+.ph-full { display: block; width: 100%; max-height: 62vh; object-fit: contain; border-radius: 16px; background: var(--input); }

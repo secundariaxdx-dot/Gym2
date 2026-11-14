@@ -381,6 +381,39 @@ h3.sec { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; margin: 26px
 button.li-btn { width: 100%; appearance: none; background: none; border: 0; border-bottom: 1px solid var(--line); font: inherit; color: inherit; text-align: left; cursor: pointer; }
 button.li-btn:last-child { border-bottom: 0; }
 
+/* ================= v2.2 · fotos y figura de músculos ================= */
+.media { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; border-radius: 16px; margin: 0 0 8px; overscroll-behavior-x: contain; }
+.media::-webkit-scrollbar { display: none; }
+.slide { flex: 0 0 100%; aspect-ratio: 1 / 1; scroll-snap-align: center; scroll-snap-stop: always; border-radius: 16px; overflow: hidden; background: var(--input); position: relative; }
+.slide img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.slide img:not([src]) { visibility: hidden; }
+.slide.fig { background: var(--card); border: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; padding: 12px 14px 10px; }
+.sess .slide.fig { background: color-mix(in srgb, var(--input) 55%, var(--card)); border: 0; }
+.fig-t { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.bm { flex: 1; min-height: 0; width: 100%; margin: 6px 0 4px; }
+.bm-base { fill: color-mix(in srgb, var(--muted) 30%, var(--card)); }
+.bm-m { fill: color-mix(in srgb, var(--muted) 46%, var(--card)); stroke: var(--card); stroke-width: 1.1; stroke-linejoin: round; }
+.sess .bm-m { stroke: color-mix(in srgb, var(--input) 55%, var(--card)); }
+.bm-m.on { fill: var(--accent); }
+.fig-l { width: 100%; display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; color: var(--muted); }
+.fig-l > span:first-child, .fig-l > span:last-child { width: 30%; text-align: center; }
+.fig-sc { display: inline-flex; align-items: center; gap: 4px; font-weight: 500; }
+.fig-sc i { width: 12px; height: 12px; border-radius: 4px; background: var(--accent); }
+.fig-sc i:nth-child(1) { opacity: 0.34; margin-left: 3px; }
+.fig-sc i:nth-child(2) { opacity: 0.67; }
+.fig-sc i:nth-child(3) { margin-right: 3px; }
+.dots { display: flex; justify-content: center; gap: 6px; margin: 0 0 10px; }
+.dots[hidden] { display: none; }
+.dots i { width: 7px; height: 7px; border-radius: 50%; background: color-mix(in srgb, var(--muted) 45%, transparent); transition: background-color 0.2s ease, transform 0.2s ease; }
+.dots i.on { background: var(--accent); transform: scale(1.15); }
+.sess .media { margin: 0 0 8px; }
+.sess .dots { margin-bottom: 8px; }
+.ph-add { display: flex; align-items: center; justify-content: center; gap: 8px; position: relative; cursor: pointer; }
+.ph-add input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.sheet label.ph-add { display: flex; font-size: 16px; color: var(--text); font-weight: 600; margin: 10px 0 0; }
+.sheet label.ph-add input { display: block; position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; opacity: 0; }
+.ph-full { display: block; width: 100%; max-height: 62vh; object-fit: contain; border-radius: 16px; background: var(--input); }
+
 </style>
 </head>
 <body>
@@ -1632,6 +1665,159 @@ button.li-btn:last-child { border-bottom: 0; }
     return h;
   }
 
+  /* ---------- fotos de los entrenos ----------
+     Se guardan en IndexedDB (no caben en localStorage): la sesión solo lleva la lista de ids en `photos`. */
+  var PDBP = null, purl = {}, PH_MAX = 6;
+  function pdb() {
+    if (!PDBP) PDBP = new Promise(function (res, rej) {
+      try {
+        var r = indexedDB.open('gym-photos', 1);
+        r.onupgradeneeded = function () { r.result.createObjectStore('p'); };
+        r.onsuccess = function () { res(r.result); }; r.onerror = function () { rej(r.error); };
+      } catch (e) { rej(e); }
+    });
+    return PDBP;
+  }
+  function ptx(mode, fn) {
+    return pdb().then(function (db) {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction('p', mode), rq = fn(tx.objectStore('p'));
+        tx.oncomplete = function () { res(rq && rq.result); }; tx.onerror = tx.onabort = function () { rej(tx.error); };
+      });
+    });
+  }
+  function photoPut(id, blob) { return blob.arrayBuffer().then(function (buf) { return ptx('readwrite', function (st) { return st.put({ buf: buf, type: blob.type, t: Date.now() }, id); }); }); }
+  function photoGet(id) { return ptx('readonly', function (st) { return st.get(id); }); }
+  function photoDel(id) { if (purl[id]) { URL.revokeObjectURL(purl[id]); delete purl[id]; } return ptx('readwrite', function (st) { return st.delete(id); }).catch(noop); }
+  // Reduce la foto a 1280 px de lado mayor y JPEG: ~200 KB en vez de varios MB
+  function shrinkPhoto(file) {
+    return new Promise(function (res, rej) {
+      var url = URL.createObjectURL(file), im = new Image();
+      im.onload = function () {
+        try {
+          var k = Math.min(1, 1280 / Math.max(im.naturalWidth, im.naturalHeight)), c = document.createElement('canvas');
+          c.width = Math.max(1, Math.round(im.naturalWidth * k)); c.height = Math.max(1, Math.round(im.naturalHeight * k));
+          c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+          c.toBlob(function (b) { if (b) res(b); else rej(new Error('blob')); }, 'image/jpeg', 0.82);
+        } catch (e) { rej(e); }
+      };
+      im.onerror = function () { URL.revokeObjectURL(url); rej(new Error('img')); };
+      im.src = url;
+    });
+  }
+  function addPhotos(sid, files) {
+    var x = sessById(sid); if (!x) return;
+    var room = PH_MAX - (x.photos || []).length, list = Array.prototype.slice.call(files, 0, Math.max(0, room));
+    if (!list.length) { toast('Máximo ' + PH_MAX + ' fotos por entreno'); return; }
+    var added = 0;
+    list.reduce(function (pr, f) {
+      return pr.then(function () { return shrinkPhoto(f); }).then(function (b) {
+        var id = 'p' + uid(); return photoPut(id, b).then(function () { purl[id] = URL.createObjectURL(b); (x.photos = x.photos || []).push(id); added++; });
+      }).catch(noop);
+    }, Promise.resolve()).then(function () {
+      if (!added) { toast('No se pudo guardar la foto'); return; }
+      save(); closeModal(); ui.tab = 'perfil'; ui.sessOpen = sid; render(); window.scrollTo(0, 0);
+      toast(added === 1 ? 'Foto añadida' : added + ' fotos añadidas');
+    });
+  }
+  // Rellena las fotos que aún no están en memoria; si una falta en este iPhone, quita su hueco
+  function hydratePhotos() {
+    document.querySelectorAll('img[data-ph]:not([src])').forEach(function (im) {
+      var id = im.getAttribute('data-ph');
+      if (purl[id]) { im.src = purl[id]; return; }
+      photoGet(id).then(function (rec) {
+        if (!rec) throw new Error('no');
+        if (!purl[id]) purl[id] = URL.createObjectURL(new Blob([rec.buf], { type: rec.type || 'image/jpeg' }));
+        document.querySelectorAll('img[data-ph="' + id + '"]').forEach(function (i2) { i2.src = purl[id]; });
+      }).catch(function () {
+        document.querySelectorAll('img[data-ph="' + id + '"]').forEach(function (i2) { var sl = i2.closest('.slide'), md = sl && sl.parentNode; if (sl) sl.remove(); if (md) syncDots(md); });
+      });
+    });
+  }
+  // Limpieza al abrir: fotos de entrenos borrados hace más de 7 días
+  function gcPhotos() {
+    var used = {}; state.sessions.forEach(function (x) { (x.photos || []).forEach(function (id) { used[id] = 1; }); });
+    pdb().then(function (db) {
+      var tx = db.transaction('p', 'readwrite'), st = tx.objectStore('p'), cur = st.openCursor();
+      cur.onsuccess = function () { var c = cur.result; if (!c) return; if (!used[c.key] && Date.now() - ((c.value && c.value.t) || 0) > 7 * 86400000) c.delete(); c.continue(); };
+    }).catch(noop);
+  }
+  var CAM = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.6-2.2h6.8L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/></svg>';
+  function photoBtn(sid, cls) { return '<label class="btn ' + cls + ' ph-add">' + CAM + '<span>Añadir foto</span><input type="file" accept="image/*" multiple data-f="photo" data-sid="' + esc(sid) + '"></label>'; }
+
+  /* ---------- figura con los músculos trabajados ----------
+     Media figura (lado derecho, eje en x = 0) que se dibuja también en espejo. Dibujo propio. */
+  var BM_BODY = 'M0 42 L6.5 42 C14 46 27 46 35 50 C44 53 49.5 60 50 71 L55 110 L62.5 158 C65 167 63.5 177 59 181 C54.5 183.5 51.5 177 51.5 170 L44 119 L37.5 88 L35 102 C34 116 29.5 128 28.5 140 C31 150 33 160 33 172 L30 233 C30 244 28 254 27 262 L23.5 316 C24.5 325 29.5 332 30 339 L11 339 C9.5 331 11 322 11 316 L7.5 262 C6 252 6 244 6.5 236 L2 172 L0 168 Z';
+  var BM_DELT = 'M31 50.5 C40 51 48.5 57 49 69 C49 75 47 79.5 44 82 C42.5 73 38 64.5 30.5 58.5 Z';
+  var BM_UARM = 'M40 89 C44 87 48 83 50.3 79 L54 106 C52.5 110.5 48 112 45 110.5 Z';
+  var BM_FARM = 'M45.5 117 C48.5 118.5 52.5 117.5 55.3 114 L61.5 156 C60 160 56 161 53.5 159.5 Z';
+  var BM_FRONT = [
+    ['Trapecio', 'M7.5 43.5 C14 46.5 22 47 28 48.6 L9.5 52.3 Z'],
+    ['Hombros', BM_DELT],
+    ['Pecho', 'M2.5 55 L27 54.5 C32.5 58.5 35.5 66.5 36 77 C29 85.5 13.5 88 2.5 84 Z'],
+    ['Bíceps', BM_UARM],
+    ['Antebrazos', BM_FARM],
+    ['Abdominales', 'M2.5 88.5 C12.5 92 24 91 33.5 85.5 L33.8 102 C32.8 116 28.8 128 27 139.5 C20 144.5 10.5 146.5 2.5 147 Z'],
+    ['Aductores', 'M2.8 174 L12 171.5 C12 187 10 203 7 218 Z'],
+    ['Cuádriceps', 'M14.5 171 C20.5 168.3 28 169.3 31.5 174.5 L28.5 229 C25 235 13.5 235 9.5 229.5 C9.3 221 10.3 213 11.5 204 C13 192 14.5 182 14.5 171 Z'],
+    ['Gemelos', 'M9 247 C13 243 22.5 243 26 247.5 C26 262 24.5 280 22.8 299 L12.5 299 C10.8 280 9 262 9 247 Z']
+  ];
+  var BM_BACK = [
+    ['Trapecio', 'M0 41 L6.5 42.5 C14.5 46.5 23 47.5 29.5 49.6 C21 56 10.5 70 0 92 Z'],
+    ['Hombros', BM_DELT],
+    ['Espalda', 'M30.5 53.2 C22.5 61 12.5 75.5 3.5 94.5 L3.5 101 C16.5 99 29 93.5 36.3 85.5 C36.3 73 34.8 61.5 30.5 53.2 Z'],
+    ['Tríceps', BM_UARM],
+    ['Antebrazos', BM_FARM],
+    ['Dorsales', 'M35.8 89.8 C28 97 15.5 102 3.5 104 L3.5 129.5 C12.5 131.5 21 132.5 28 132.5 C30.3 120.5 33.8 105 35.8 89.8 Z'],
+    ['Lumbares', 'M3 133.2 C10.5 135.2 19 136.2 27.6 136.2 C28 141.5 29.5 146 31 150 L3 150 Z'],
+    ['Glúteos', 'M2 153.5 L31.8 153.5 C33.5 161 33.5 170 32 178 C24.5 186.5 8.5 186.5 2 180.5 Z'],
+    ['Isquios', 'M4 189.5 C12.5 193.5 24 192.5 31 186 L28.5 229 C25 235 13.5 235 9.5 229.5 C8.3 217 6 204 4 189.5 Z'],
+    ['Gemelos', 'M8.2 243 C13 238.5 24 238.5 27.8 243.8 C27.8 257 25.8 271 24 291 L12 291 C10 272 8.2 257 8.2 243 Z']
+  ];
+  function bodyFig(parts, w) {
+    function both(d, attr) { return '<path' + attr + ' d="' + d + '"/><path' + attr + ' d="' + d + '" transform="scale(-1 1)"/>'; }
+    var g = '<ellipse class="bm-base" cx="0" cy="19.5" rx="12.5" ry="15.5"/>' + both(BM_BODY, ' class="bm-base"');
+    parts.forEach(function (p) {
+      var v = w[p[0]] || 0;
+      g += both(p[1], ' class="bm-m' + (v ? ' on' : '') + '" data-m="' + p[0] + '"' + (v ? ' style="fill-opacity:' + (0.34 + 0.66 * v).toFixed(2) + '"' : ''));
+    });
+    return g;
+  }
+  // w: {músculo: 0..1}. Los principales cuentan cada serie; los secundarios, la mitad.
+  function muscleWeights(x) {
+    var w = {}, max = 0;
+    x.exercises.forEach(function (e) {
+      var n = e.sets.length;
+      if (e.muscle) w[e.muscle] = (w[e.muscle] || 0) + n;
+      (e.sec || []).forEach(function (m) { w[m] = (w[m] || 0) + n * 0.5; });
+    });
+    Object.keys(w).forEach(function (k) { max = Math.max(max, w[k]); });
+    Object.keys(w).forEach(function (k) { w[k] = max ? w[k] / max : 0; });
+    return w;
+  }
+  function bodyMap(x) {
+    var w = muscleWeights(x), names = Object.keys(w).sort(function (a, b) { return w[b] - w[a]; });
+    return '<svg class="bm" viewBox="0 0 276 346" role="img" aria-label="Músculos trabajados: ' + esc(names.join(', ')) + '"><g transform="translate(69 3)">' + bodyFig(BM_FRONT, w) + '</g><g transform="translate(207 3)">' + bodyFig(BM_BACK, w) + '</g></svg>';
+  }
+  // Carrusel: las fotos y, al deslizar, la figura de músculos
+  function mediaHtml(x, inDetail) {
+    var ph = x.photos || [], n = ph.length + 1;
+    var h = '<div class="media" data-n="' + n + '">' + ph.map(function (id) {
+      return '<div class="slide ph"><img data-ph="' + esc(id) + '"' + (purl[id] ? ' src="' + purl[id] + '"' : '') + (inDetail ? ' data-a="photo" data-id="' + esc(id) + '" data-sid="' + esc(x.id) + '"' : '') + ' alt="Foto del entreno" loading="lazy"></div>';
+    }).join('') +
+      '<div class="slide fig"><div class="fig-t">Músculos trabajados</div>' + bodyMap(x) + '<div class="fig-l"><span>Frontal</span><span class="fig-sc">menos<i></i><i></i><i></i>más</span><span>Posterior</span></div></div></div>';
+    if (n > 1) { h += '<div class="dots">'; for (var k = 0; k < n; k++) h += '<i' + (k ? '' : ' class="on"') + '></i>'; h += '</div>'; }
+    return h;
+  }
+  function syncDots(md) {
+    var dots = md.nextElementSibling; if (!dots || !dots.classList.contains('dots')) return;
+    var n = md.children.length, k = Math.max(0, Math.min(n - 1, Math.round(md.scrollLeft / Math.max(1, md.scrollWidth / Math.max(1, n)))));
+    while (dots.children.length > n) dots.removeChild(dots.lastChild);
+    dots.hidden = n < 2;
+    Array.prototype.forEach.call(dots.children, function (d, i) { d.classList.toggle('on', i === k); });
+  }
+  document.addEventListener('scroll', function (ev) { var t = ev.target; if (t && t.classList && t.classList.contains('media')) syncDots(t); }, true);
+
   /* ---------- perfil: resumen y registro de entrenos ---------- */
   function sessStats(x) {
     var sets = 0, vol = 0, reps = 0;
@@ -1692,11 +1878,12 @@ button.li-btn:last-child { border-bottom: 0; }
         h += '<div class="grp cap">' + esc(d.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })) + ' · ' + nM + (nM === 1 ? ' entreno' : ' entrenos') + '</div>';
       }
       var st = sessStats(x), exs = x.exercises;
-      h += '<button class="card sess" data-a="sess" data-id="' + esc(x.id) + '"><span class="ss-top"><span><span class="ss-name">' + esc(x.name) + '</span><span class="muted small cap">' + esc(fmtDate(x.t)) + ' · ' + hhmm(x.t0 || x.t) + '</span></span>' +
+      h += '<div class="card sess" role="button" tabindex="0" data-a="sess" data-id="' + esc(x.id) + '"><span class="ss-top"><span><span class="ss-name">' + esc(x.name) + '</span><span class="muted small cap">' + esc(fmtDate(x.t)) + ' · ' + hhmm(x.t0 || x.t) + '</span></span>' +
         (st.prs ? '<span class="chip ok">🏆 ' + st.prs + (st.prs === 1 ? ' récord' : ' récords') + '</span>' : '') + '</span>' +
         '<span class="ss-stats"><span><b>' + durText(st.min) + '</b>Tiempo</span><span><b>' + kgText(st.vol) + '</b>Volumen</span><span><b>' + st.sets + '</b>Series</span></span>' +
+        ((x.photos || []).length ? mediaHtml(x, false) : '') +
         '<span class="ss-ex">' + exs.slice(0, 4).map(function (e) { return '<span class="ss-row"><span class="ss-e">' + e.sets.length + ' × ' + esc(e.name) + '</span><span class="ss-b">' + esc(setText(topSet(e.sets))) + '</span></span>'; }).join('') +
-        (exs.length > 4 ? '<span class="muted small">+ ' + (exs.length - 4) + (exs.length - 4 === 1 ? ' ejercicio más' : ' ejercicios más') + '</span>' : '') + '</span></button>';
+        (exs.length > 4 ? '<span class="muted small">+ ' + (exs.length - 4) + (exs.length - 4 === 1 ? ' ejercicio más' : ' ejercicios más') + '</span>' : '') + '</span></div>';
     });
     if (ss.length > shown.length) h += '<button class="btn wide" data-a="pf-more">Ver más entrenos (' + (ss.length - shown.length) + ')</button>';
     return h;
@@ -1707,6 +1894,7 @@ button.li-btn:last-child { border-bottom: 0; }
     var h = '<header class="top"><div><button class="back" data-a="sess-back">‹ Entrenos</button><h1>' + esc(x.name) + '</h1><div class="sub cap">' + esc(d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })) +
       ' · ' + (x.t0 && st.min ? hhmm(x.t0) + '–' + hhmm(x.t) : hhmm(x.t)) + '</div></div></header>';
     h += '<div class="tiles">' + tile(durText(st.min), 'Duración') + tile(kgText(st.vol), 'Volumen') + tile(st.sets, 'Series') + tile(st.prs ? '🏆 ' + st.prs : '0', st.prs === 1 ? 'Récord' : 'Récords') + '</div>';
+    h += mediaHtml(x, true) + ((x.photos || []).length < PH_MAX ? photoBtn(x.id, 'wide') : '');
     var mus = {}, order = [];
     x.exercises.forEach(function (e) { if (!e.muscle) return; if (!mus[e.muscle]) { mus[e.muscle] = 0; order.push(e.muscle); } mus[e.muscle] += e.sets.length; });
     if (order.length) h += '<div class="chips ss-mus">' + order.map(function (k) { return '<span class="chip">' + esc(k) + ' · ' + mus[k] + '</span>'; }).join('') + '</div>';
@@ -1740,13 +1928,13 @@ button.li-btn:last-child { border-bottom: 0; }
       '<section class="card pad"><h2>Copia de seguridad</h2><p class="muted small">Tus datos están solo en este iPhone. ' + (lb ? 'Última copia: ' + fmtDate(lb) + '.' : 'Aún no has hecho ninguna copia.') + '</p>' +
       '<div class="r-btns"><button class="btn primary" data-a="backup">Guardar copia</button><button class="btn" data-a="copy">Copiar texto</button></div>' +
       '<div class="r-btns"><button class="btn" data-a="import-file">Importar archivo</button><button class="btn" data-a="import-paste">Pegar texto</button></div>' +
-      '<input id="file" type="file" accept="application/json,.json" hidden></section>' +
+      '<input id="file" type="file" accept="application/json,.json" hidden><p class="muted small" style="margin-top:10px">Las fotos de los entrenos se quedan solo en este iPhone: no van dentro de la copia.</p></section>' +
       '<section class="card pad"><h2>Descanso</h2><label class="switch"><span>Sonidos (serie hecha y fin del descanso)</span><input type="checkbox" data-f="sound"' + (state.settings.sound !== false ? ' checked' : '') + '></label></section>' +
       pushSection() +
       '<section class="card pad"><h2>Fútbol y correr</h2><label class="switch"><span>Cuentan (poco) en la fatiga de piernas</span><input type="checkbox" data-f="actFatigue"' + (state.settings.actFatigue !== false ? ' checked' : '') + '></label></section>' +
       '<section class="card pad"><h2>Instalar en el iPhone</h2><p class="muted small">En Safari: botón Compartir → «Añadir a pantalla de inicio». Así se abre a pantalla completa y los datos se conservan.</p></section>' +
       '<section class="card pad"><h2>Datos iniciales</h2><p class="muted small">Vuelve a cargar tus 17 ejercicios con la última sesión de las capturas. Borra tu historial.</p><button class="btn danger" data-a="reset">Restaurar datos iniciales</button></section>' +
-      '<div class="muted small center" id="ver">Versión 2.1 (gym-v14) · progresión al fallo con doble progresión</div>';
+      '<div class="muted small center" id="ver">Versión 2.2 (gym-v15) · progresión al fallo con doble progresión</div>';
   }
 
   /* ---------- modales ---------- */
@@ -1785,13 +1973,15 @@ button.li-btn:last-child { border-bottom: 0; }
         (m.diff ? '<label class="switch"><span>Guardar los cambios de ejercicios en la rutina</span><input type="checkbox" id="f-saver"></label>' : '') +
         '<div class="r-btns"><button class="btn primary" data-a="finish-yes">Guardar entreno</button><button class="btn" data-a="close">Seguir entrenando</button></div>';
     } else if (m.type === 'summary') {
-      h = '<h2>Entreno guardado</h2><p>' + m.sets + ' series · ' + m.min + ' min</p>' + (m.prs.length ? '<div class="card list">' + m.prs.map(function (p) { return '<div class="li"><div>🏆 ' + esc(p.name) + '</div><b>' + fmt(p.w) + ' × ' + p.r + '</b></div>'; }).join('') + '</div>' : '<div class="muted">Sin récords esta vez. La próxima sesión ya tiene objetivos nuevos.</div>') + analysisHtml(sessById(m.sid), true) + '<div class="r-btns"><button class="btn primary" data-a="close">Cerrar</button><button class="btn" data-a="sess" data-id="' + esc(m.sid) + '">Ver entreno</button></div>';
+      h = '<h2>Entreno guardado</h2><p>' + m.sets + ' series · ' + m.min + ' min</p>' + (m.prs.length ? '<div class="card list">' + m.prs.map(function (p) { return '<div class="li"><div>🏆 ' + esc(p.name) + '</div><b>' + fmt(p.w) + ' × ' + p.r + '</b></div>'; }).join('') + '</div>' : '<div class="muted">Sin récords esta vez. La próxima sesión ya tiene objetivos nuevos.</div>') + analysisHtml(sessById(m.sid), true) + '<div class="r-btns"><button class="btn primary" data-a="close">Cerrar</button><button class="btn" data-a="sess" data-id="' + esc(m.sid) + '">Ver entreno</button></div>' + photoBtn(m.sid, 'wide');
     } else if (m.type === 'day') {
       var p = m.day.split('-').map(Number), dt = new Date(p[0], p[1] - 1, p[2]);
       var gs = state.sessions.filter(function (s) { return dayKey(s.t) === m.day; });
       h = '<h2 class="cap">' + esc(dt.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })) + '</h2>' +
         (gs.length ? '<div class="card list">' + gs.map(function (s) { var n = s.exercises.reduce(function (a, e) { return a + e.sets.length; }, 0); return '<button class="li li-btn" data-a="sess" data-id="' + esc(s.id) + '"><div class="ex-name"><span class="ic-gym">' + MINI_DB + '</span> ' + esc(s.name) + '</div><div class="muted small">' + n + ' series' + (s.prs && s.prs.length ? ' · 🏆 ' + s.prs.length : '') + ' ›</div></button>'; }).join('') + '</div>' : '<p class="muted">Sin gimnasio este día.</p>') +
         '<div class="lbl">Otras actividades</div>' + actButtons(m.day) + '<button class="btn primary wide" data-a="close">Listo</button>';
+    } else if (m.type === 'photo') {
+      h = '<img class="ph-full" data-ph="' + esc(m.id) + '"' + (purl[m.id] ? ' src="' + purl[m.id] + '"' : '') + ' alt="Foto del entreno"><div class="r-btns"><button class="btn" data-a="close">Cerrar</button><button class="btn danger" data-a="photo-del">Borrar foto</button></div>';
     } else if (m.type === 'paste') {
       h = '<h2>Pegar copia</h2><p class="muted small">Pega aquí el texto de tu copia de seguridad.</p><textarea id="paste" rows="7" class="ta"></textarea><div class="r-btns"><button class="btn primary" data-a="paste-yes">Importar</button><button class="btn" data-a="close">Cancelar</button></div>';
     } else if (m.type === 'text') {
@@ -1862,7 +2052,7 @@ button.li-btn:last-child { border-bottom: 0; }
     var y = window.scrollY;
     var html = ui.tab === 'hoy' ? (state.active ? viewWorkout() : viewHoy()) : ui.tab === 'cal' ? viewCal() : ui.tab === 'ej' ? viewEj() : ui.tab === 'prog' ? viewProg() : ui.tab === 'perfil' ? viewPerfil() : viewSet();
     $('#app').innerHTML = html;
-    renderTabs(); updateTimer(); syncMute(); updateWprog(); clockSync();
+    renderTabs(); updateTimer(); syncMute(); updateWprog(); clockSync(); hydratePhotos();
     window.scrollTo(0, y);
   }
   var toastT = null;
@@ -2132,6 +2322,16 @@ button.li-btn:last-child { border-bottom: 0; }
         ui.tab = 'perfil'; ui.sessOpen = el.getAttribute('data-id'); closeModal(); render(); window.scrollTo(0, 0);
         var ap2 = $('#app'); ap2.classList.remove('enter'); void ap2.offsetWidth; ap2.classList.add('enter'); break;
       }
+      case 'photo': openModal({ type: 'photo', id: el.getAttribute('data-id'), sid: el.getAttribute('data-sid') }); hydratePhotos(); break;
+      case 'photo-del': {
+        var px = sessById(ui.modal.sid), pid = ui.modal.id, pi = px ? (px.photos || []).indexOf(pid) : -1;
+        if (pi < 0) { closeModal(); break; }
+        px.photos.splice(pi, 1); save(); closeModal(); render();
+        // se borra de verdad cuando ya no se puede deshacer
+        var pdel = setTimeout(function () { photoDel(pid); }, 7500);
+        toast('Foto borrada', function () { clearTimeout(pdel); var py = sessById(px.id); if (py) { (py.photos = py.photos || []).splice(Math.min(pi, py.photos.length), 0, pid); save(); render(); } });
+        break;
+      }
       case 'sess-back': ui.sessOpen = null; render(); window.scrollTo(0, ui.pfScroll || 0); break;
       case 'pf-m': ui.pfM = el.getAttribute('data-v'); render(); break;
       case 'pf-more': ui.feedN = (ui.feedN || 20) + 20; render(); break;
@@ -2173,6 +2373,7 @@ button.li-btn:last-child { border-bottom: 0; }
     else if (t.getAttribute && t.getAttribute('data-f') === 'push') { if (t.checked) enablePush(); else { if (timer && timer.armed) { pushStop(); timer.armed = 0; } state.settings.push = false; save(); render(); } }
     else if (t.getAttribute && t.getAttribute('data-f') === 'progM') { ui.progM = t.value; render(); }
     else if (t.getAttribute && t.getAttribute('data-f') === 'actFatigue') { state.settings.actFatigue = t.checked; save(); }
+    else if (t.getAttribute && t.getAttribute('data-f') === 'photo') { if (t.files && t.files.length) addPhotos(t.getAttribute('data-sid'), t.files); t.value = ''; }
     else if (t.id === 'file' && t.files && t.files[0]) { var rd = new FileReader(); rd.onload = function () { importText(String(rd.result)); }; rd.readAsText(t.files[0]); t.value = ''; }
     else if (t.id === 'f-equip' && ui.modal && ui.modal.type === 'exedit' && ui.modal.isNew && !ui.modal.stepTouched) { $('#f-step').value = fmt(STEP_DEFAULT[t.value] || 2.5); $('#f-unit').value = 'kg'; }
   });
@@ -2185,7 +2386,7 @@ button.li-btn:last-child { border-bottom: 0; }
   /* ---------- arranque ---------- */
   render();
   if (state.active) wake();
-  pushRefresh(); closeRestNotes();
+  pushRefresh(); closeRestNotes(); gcPhotos();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     // Versión nueva: se recarga sola (si estás en mitad de un entreno, al volver a la app; los datos ya están guardados)
     var hadSW = !!navigator.serviceWorker.controller, reloadPending = false, swReg = null;
