@@ -122,6 +122,7 @@
     for (var k = 1; k <= n; k++) { var x = (i + k) % n; if (x !== i && es[x].sets.some(function (st) { return !st.done; })) return x; }
     return -1;
   }
+  function animOpen() { var bd = $('section.ex.open .ex-body'); if (bd) bd.classList.add('anim'); }
   function scrollToOpen(block) {
     var sec = $('section.ex.open'); if (!sec) return;
     var smooth = !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -217,18 +218,6 @@
     } catch (e) { /* nada */ }
   }
   function beep() { play('end'); }
-  var haptics = [];
-  function haptic() {
-    if (state.settings.haptic === false) return;
-    haptics.push(Date.now());
-    try {
-      if (navigator.vibrate) { navigator.vibrate(12); return; }
-      // iOS 18+: activar un <input switch> produce un toque háptico (solo dentro de un toque del usuario)
-      var l = document.createElement('label'); l.setAttribute('aria-hidden', 'true'); l.style.display = 'none';
-      var inp = document.createElement('input'); inp.type = 'checkbox'; inp.setAttribute('switch', ''); l.appendChild(inp);
-      document.head.appendChild(l); l.click(); document.head.removeChild(l);
-    } catch (e) { /* nada */ }
-  }
   function updateTimer() {
     var el = $('#timer'); if (!el) return;
     if (!timer) { el.hidden = true; document.body.classList.remove('has-timer'); return; }
@@ -272,6 +261,7 @@
     aj: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6"/>'
   };
   function svg(p) { return '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + p + '</svg>'; }
+  var CHEV = '<svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
   var CHECK = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 
   function renderTabs() {
@@ -288,12 +278,24 @@
   }
   function setsText(sets) { return sets.map(function (s) { return fmt(s.w) + '×' + s.r; }).join(' · '); }
 
+  // Semana en curso (lunes a domingo): días entrenados de un vistazo; al tocar abre el calendario
+  function weekStrip() {
+    var info = dayInfo(), now = new Date(), today = dayKey(Date.now()), n = 0, cells = '';
+    var mon = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
+    ['L', 'M', 'X', 'J', 'V', 'S', 'D'].forEach(function (l, i) {
+      var d = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + i), k = dayKey(d.getTime()), di = info[k];
+      var gym = !!(di && di.gym.length), act = !!(di && di.acts.length); if (gym) n++;
+      cells += '<span class="wk-d' + (gym ? ' gym' : act ? ' act' : '') + (k === today ? ' today' : '') + (k > today ? ' fut' : '') + '"><span class="wk-l">' + l + '</span><span class="wk-c">' + (gym ? CHECK : d.getDate()) + '</span></span>';
+    });
+    return '<button class="card week" data-a="tab" data-t="cal" aria-label="Esta semana: ' + n + ' entrenos. Abrir calendario"><span class="wk-top"><span class="wk-t">Esta semana</span><span class="wk-n">' + (n ? '<b>' + n + '</b> ' + (n === 1 ? 'entreno' : 'entrenos') : 'Sin entrenos todavía') + '</span></span><span class="wk-row">' + cells + '</span></button>';
+  }
   function viewHoy() {
     var now = Date.now();
     var fs = E.fatigueSummary(fatigueSessions(), now), fm = {};
     fs.forEach(function (f) { fm[f.muscle] = f; });
     var d = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
     var h = '<header class="top"><div><h1>Hoy</h1><div class="sub cap">' + esc(d) + '</div></div></header>';
+    h += weekStrip();
     if (memoryOnly) h += '<div class="banner warn">No se puede guardar en este navegador. Los datos se perderán al cerrar. Instala la app en la pantalla de inicio.</div>';
     var since = state.settings.lastBackup || 0;
     if (state.sessions.length >= 3 && now - since > 14 * 86400000) {
@@ -324,7 +326,7 @@
 
   function cardHtml(e, i, open) {
     var d = e.sets.filter(function (s) { return s.done; }).length;
-    var h = '<section class="card ex' + (open ? ' open' : '') + '"><button class="ex-head" data-a="toggle" data-i="' + i + '"><div><div class="ex-name">' + esc(e.name) + '</div><div class="muted small">' + esc(e.muscle) + '</div></div><div class="ex-count' + (d && d === e.sets.length ? ' full' : '') + '">' + d + '/' + e.sets.length + '</div></button>';
+    var h = '<section class="card ex' + (open ? ' open' : '') + '"><button class="ex-head" data-a="toggle" data-i="' + i + '"><div><div class="ex-name">' + esc(e.name) + '</div><div class="muted small">' + esc(e.muscle) + '</div></div><div class="ex-meta"><div class="ex-count' + (d && d === e.sets.length ? ' full' : '') + '">' + d + '/' + e.sets.length + '</div>' + CHEV + '</div></button>';
     if (!open) return h + '</section>';
     h += '<div class="ex-body">';
     if (e.stall) {
@@ -782,13 +784,12 @@
       '<div class="r-btns"><button class="btn primary" data-a="backup">Guardar copia</button><button class="btn" data-a="copy">Copiar texto</button></div>' +
       '<div class="r-btns"><button class="btn" data-a="import-file">Importar archivo</button><button class="btn" data-a="import-paste">Pegar texto</button></div>' +
       '<input id="file" type="file" accept="application/json,.json" hidden></section>' +
-      '<section class="card pad"><h2>Descanso</h2><label class="switch"><span>Sonidos (serie hecha y fin del descanso)</span><input type="checkbox" data-f="sound"' + (state.settings.sound !== false ? ' checked' : '') + '></label>' +
-      '<label class="switch"><span>Vibración al marcar serie (experimental)</span><input type="checkbox" data-f="haptic"' + (state.settings.haptic !== false ? ' checked' : '') + '></label></section>' +
+      '<section class="card pad"><h2>Descanso</h2><label class="switch"><span>Sonidos (serie hecha y fin del descanso)</span><input type="checkbox" data-f="sound"' + (state.settings.sound !== false ? ' checked' : '') + '></label></section>' +
       pushSection() +
       '<section class="card pad"><h2>Fútbol y correr</h2><label class="switch"><span>Cuentan (poco) en la fatiga de piernas</span><input type="checkbox" data-f="actFatigue"' + (state.settings.actFatigue !== false ? ' checked' : '') + '></label></section>' +
       '<section class="card pad"><h2>Instalar en el iPhone</h2><p class="muted small">En Safari: botón Compartir → «Añadir a pantalla de inicio». Así se abre a pantalla completa y los datos se conservan.</p></section>' +
       '<section class="card pad"><h2>Datos iniciales</h2><p class="muted small">Vuelve a cargar tus 17 ejercicios con la última sesión de las capturas. Borra tu historial.</p><button class="btn danger" data-a="reset">Restaurar datos iniciales</button></section>' +
-      '<div class="muted small center" id="ver">Versión 1.10 ({{VER}}) · progresión al fallo con doble progresión</div>';
+      '<div class="muted small center" id="ver">Versión 2.0 ({{VER}}) · progresión al fallo con doble progresión</div>';
   }
 
   /* ---------- modales ---------- */
@@ -823,7 +824,7 @@
       }).join('') + '</div>' : '<div class="empty">Rutina vacía.</div>') + '<button class="btn wide" data-a="r-add">+ Añadir ejercicio</button>' +
         '<div class="r-btns"><button class="btn" data-a="r-dup">Duplicar</button><button class="btn danger" data-a="r-del">Borrar rutina</button></div><button class="btn primary wide" data-a="close">Listo</button>';
     } else if (m.type === 'finish') {
-      h = '<h2>Terminar entreno</h2><p>' + m.done + ' series marcadas' + (m.pending ? ' (' + m.pending + ' sin marcar no se guardarán)' : '') + '.</p>' +
+      h = '<h2>Terminar entreno</h2><p>' + m.done + (m.done === 1 ? ' serie marcada' : ' series marcadas') + (m.pending ? ' (' + m.pending + ' sin marcar no se guardarán)' : '') + '.</p>' +
         (m.diff ? '<label class="switch"><span>Guardar los cambios de ejercicios en la rutina</span><input type="checkbox" id="f-saver"></label>' : '') +
         '<div class="r-btns"><button class="btn primary" data-a="finish-yes">Guardar entreno</button><button class="btn" data-a="close">Seguir entrenando</button></div>';
     } else if (m.type === 'summary') {
@@ -856,11 +857,11 @@
   }
   function renderModal() {
     var el = $('#modal');
-    if (!ui.modal) { el.hidden = true; el.innerHTML = ''; document.body.classList.remove('modal-open'); return; }
+    if (!ui.modal) { el.hidden = true; el.innerHTML = ''; el.classList.remove('opening'); document.body.classList.remove('modal-open'); return; }
     el.hidden = false; document.body.classList.add('modal-open');
     el.innerHTML = modalHtml();
   }
-  function openModal(m) { ui.modal = m; renderModal(); var s = $('#modal .sheet'); if (s) s.scrollTop = 0; }
+  function openModal(m) { var was = !!ui.modal; ui.modal = m; renderModal(); var s = $('#modal .sheet'); if (s) { s.scrollTop = 0; if (!was) { s.classList.add('opening'); $('#modal').classList.add('opening'); } } }
   function closeModal() { ui.modal = null; renderModal(); }
   function ask(title, text, yes, fn, danger) { openModal({ type: 'confirm', title: title, text: text, yes: yes, fn: fn, danger: danger }); }
 
@@ -868,7 +869,7 @@
   function pushSection() {
     var on = pushReady(), standalone = window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
     var h = '<section class="card pad" id="push-sec"><h2>Aviso con la app cerrada</h2><label class="switch"><span>Notificación al acabar el descanso</span><input type="checkbox" data-f="push"' + (on ? ' checked' : '') + (PUSH.url ? '' : ' disabled') + '></label>' +
-      '<p class="muted small">Te avisa aunque el iPhone esté bloqueado o estés en otra app. Suena el tono de notificaciones de iOS (en modo silencio solo vibra) y necesita internet. Con la app delante suena el pitido de la app. El botón 🔇 también lo silencia.</p>';
+      '<p class="muted small">Te avisa aunque el iPhone esté bloqueado o estés en otra app. Suena el tono de notificaciones de iOS (en modo silencio solo vibra) y necesita internet. Con la app delante suena el pitido de la app. El botón de silencio también lo apaga.</p>';
     if (!pushSupported() && !standalone) h += '<p class="muted small">Para activarlo, abre la app desde el icono de la pantalla de inicio.</p>';
     if (on) {
       h += '<button class="btn" data-a="push-test">Probar: bloquea el iPhone tras pulsar</button><p class="muted small" id="push-last"></p>';
@@ -881,9 +882,10 @@
     }
     return h + '</section>';
   }
-  function muteIcon() { return soundOn() ? '🔊' : '🔇'; }
+  var SPK = '<path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/>';
+  function muteIcon() { return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + SPK + (soundOn() ? '<path d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11"/>' : '<path d="M16 9.5l5 5M21 9.5l-5 5"/>') + '</svg>'; }
   function syncMute() {
-    document.querySelectorAll('.mute-b').forEach(function (b) { b.textContent = muteIcon(); b.classList.toggle('off', !soundOn()); b.setAttribute('aria-pressed', soundOn() ? 'false' : 'true'); });
+    document.querySelectorAll('.mute-b').forEach(function (b) { b.innerHTML = muteIcon(); b.classList.toggle('off', !soundOn()); b.setAttribute('aria-pressed', soundOn() ? 'false' : 'true'); });
     var c = document.querySelector('[data-f=sound]'); if (c) c.checked = soundOn();
   }
   // Línea de progreso del entreno: series hechas / series totales (añadir series la hace retroceder)
@@ -1009,7 +1011,7 @@
     var a = el.getAttribute('data-a'), i = parseInt(el.getAttribute('data-i'), 10), j = parseInt(el.getAttribute('data-j'), 10);
     var act = state.active;
     switch (a) {
-      case 'tab': ui.tab = el.getAttribute('data-t'); closeModal(); render(); window.scrollTo(0, 0); break;
+      case 'tab': { ui.tab = el.getAttribute('data-t'); closeModal(); render(); window.scrollTo(0, 0); var ap = $('#app'); ap.classList.remove('enter'); void ap.offsetWidth; ap.classList.add('enter'); break; }
       case 'close': closeModal(); break;
       case 'cal-prev': case 'cal-next': { var c = calState(); var d = new Date(c.y, c.m + (a === 'cal-next' ? 1 : -1), 1); ui.cal = { y: d.getFullYear(), m: d.getMonth() }; render(); break; }
       case 'day': openModal({ type: 'day', day: el.getAttribute('data-d') }); break;
@@ -1031,7 +1033,7 @@
         break;
       case 'confirm-yes': var fn = ui.modal.fn; if (fn) fn(); break;
       case 'start': startWorkout(el.getAttribute('data-k')); break;
-      case 'toggle': act.open = act.open === i ? -1 : i; save(); render(); break;
+      case 'toggle': act.open = act.open === i ? -1 : i; save(); render(); animOpen(); break;
       case 'done': {
         var e = act.entries[i], s = e.sets[j];
         if (s.done) { s.done = false; s.pr = false; save(); render(); break; }
@@ -1045,7 +1047,7 @@
         var wOk = !isNaN(w) || (exr && exr.equip === 'corporal');
         if (!(r > 0) || !wOk) { var row = $('[data-row="' + i + '-' + j + '"]'); if (row) { row.classList.remove('err'); void row.offsetWidth; row.classList.add('err'); } toast('Anota peso y repeticiones'); break; }
         s.done = true; s.w = isNaN(w) ? 0 : w; s.r = r; lastDoneI = i;
-        play('tick'); haptic();
+        play('tick');
         checkPR(e, j);
         startTimer(exr || { fatigue: e.fatigue });
         var moved = false;
@@ -1053,7 +1055,10 @@
           var nx = nextPending(i);
           if (nx >= 0) { act.open = nx; moved = true; } else if (i + 1 < act.entries.length) act.open = i + 1;
         }
-        save(); render(); if (moved) scrollToOpen('start'); break;
+        save(); render();
+        var pc = $('[data-row="' + i + '-' + j + '"] .chk'); if (pc) pc.classList.add('pop');
+        if (moved) { animOpen(); scrollToOpen('start'); }
+        break;
       }
       case 'add-set': { var e1 = act.entries[i]; var lastS = e1.sets[e1.sets.length - 1]; e1.sets.push({ w: lastS ? lastS.w : '', r: '', done: false }); save(); render(); break; }
       case 'del-set': { var e2 = act.entries[i]; if (e2.sets.length > 1 && !e2.sets[e2.sets.length - 1].done) { e2.sets.pop(); save(); render(); } else toast('No se puede quitar esa serie'); break; }
@@ -1201,7 +1206,6 @@
     var t = ev.target;
     if (t.getAttribute && t.getAttribute('data-f') === 'sound') { state.settings.sound = t.checked; save(); syncMute(); pushSync(); }
     else if (t.getAttribute && t.getAttribute('data-f') === 'push') { if (t.checked) enablePush(); else { if (timer && timer.armed) { pushStop(); timer.armed = 0; } state.settings.push = false; save(); render(); } }
-    else if (t.getAttribute && t.getAttribute('data-f') === 'haptic') { state.settings.haptic = t.checked; save(); if (t.checked) haptic(); }
     else if (t.getAttribute && t.getAttribute('data-f') === 'progM') { ui.progM = t.value; render(); }
     else if (t.getAttribute && t.getAttribute('data-f') === 'actFatigue') { state.settings.actFatigue = t.checked; save(); }
     else if (t.id === 'file' && t.files && t.files[0]) { var rd = new FileReader(); rd.onload = function () { importText(String(rd.result)); }; rd.readAsText(t.files[0]); t.value = ''; }
@@ -1232,5 +1236,5 @@
     });
     window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (r) { swReg = r; }).catch(function () { }); });
   }
-  window.__gym = { get state() { return state; }, E: E, sounds: sounds, haptics: haptics, get clockOn() { return !!clock; } }; // útil para pruebas
+  window.__gym = { get state() { return state; }, E: E, sounds: sounds, get clockOn() { return !!clock; } }; // útil para pruebas
 })();

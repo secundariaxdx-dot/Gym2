@@ -18,7 +18,7 @@ fails, errors = [], []
 def check(c, m):
     print(('OK   ' if c else 'FAIL ') + m)
     if not c: fails.append(m)
-def shown(pg): return pg.evaluate("() => document.documentElement.innerHTML.match(/Versión 1\\.\\d+ \\(([^)]+)\\)/)[1]")
+def shown(pg): return pg.evaluate("() => document.documentElement.innerHTML.match(/Versión \\d+\\.\\d+ \\(([^)]+)\\)/)[1]")
 try:
     with sync_playwright() as p:
         b = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])

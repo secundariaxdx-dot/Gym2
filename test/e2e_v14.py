@@ -47,7 +47,9 @@ try:
         n_sess = pg.evaluate('() => window.__gym.state.sessions.length')
 
         pg.click('[data-a=start][data-k=push]'); pg.wait_for_selector('header.top h1')
-        check(pg.locator('header.top .mute-b').inner_text() == '🔊', 'Botón de silencio en la cabecera del entreno (activo)')
+        snd_on = lambda sel: pg.locator(sel).get_attribute('aria-pressed') == 'false' and pg.locator(sel + ' svg').count() == 1
+        snd_off = lambda sel: pg.locator(sel).get_attribute('aria-pressed') == 'true' and 'off' in pg.locator(sel).get_attribute('class')
+        check(snd_on('header.top .mute-b'), 'Botón de silencio en la cabecera del entreno (activo)')
         check(pg.evaluate('() => navigator.audioSession.type') == 'ambient', "audioSession 'ambient': se mezcla con la música")
 
         # Serie hecha -> clic sutil
@@ -72,7 +74,7 @@ try:
         # Silenciar desde el entreno
         pg.click('header.top .mute-b')
         check(pg.evaluate('() => window.__gym.state.settings.sound') is False, 'Silenciar guarda settings.sound = false')
-        check(pg.locator('header.top .mute-b').inner_text() == '🔇' and pg.locator('#timer .mute-b').inner_text() == '🔇', 'Ambos botones muestran 🔇')
+        check(snd_off('header.top .mute-b') and snd_off('#timer .mute-b'), 'Ambos botones muestran silencio')
         before = len(sounds(pg)); o1 = pg.evaluate('() => window.__osc')
         mark(pg, 1)
         finish_timer(pg); pg.wait_for_timeout(600)
@@ -81,13 +83,13 @@ try:
 
         # El silencio persiste tras reiniciar y se refleja en Ajustes
         pg.reload(); pg.wait_for_selector('header.top h1')
-        check(pg.locator('header.top .mute-b').inner_text() == '🔇', 'Silencio persiste tras reiniciar')
+        check(snd_off('header.top .mute-b'), 'Silencio persiste tras reiniciar')
         pg.click('[data-t=aj]'); pg.wait_for_selector('[data-f=sound]')
         check(not pg.is_checked('[data-f=sound]'), 'Ajustes refleja el silencio (mismo ajuste settings.sound)')
         pg.click('[data-f=sound]')
         check(pg.evaluate('() => window.__gym.state.settings.sound') is True, 'Reactivar desde Ajustes')
         pg.click('[data-t=hoy]'); pg.wait_for_selector('header.top h1')
-        check(pg.locator('header.top .mute-b').inner_text() == '🔊', 'Cabecera vuelve a 🔊')
+        check(snd_on('header.top .mute-b'), 'Cabecera vuelve a sonido activo')
         check(pg.evaluate('() => window.__gym.state.sessions.length') == n_sess, 'No se pierden sesiones')
         ctx.close()
 

@@ -31,6 +31,13 @@ try:
         pg.goto('http://localhost:8773/'); pg.wait_for_selector('.routine')
         pg.evaluate(HIST); pg.reload(); pg.wait_for_selector('.routine')
 
+        # --- v2.0: resumen de la semana en Hoy
+        check(pg.locator('.week .wk-d').count() == 7 and pg.locator('.week .wk-d.today').count() == 1, 'Hoy: semana con 7 días y hoy marcado')
+        ngym = pg.locator('.week .wk-d.gym').count()
+        check(ngym >= 0 and (('%d' % ngym) in pg.inner_text('.wk-n') or ngym == 0), 'Semana: %s' % pg.inner_text('.wk-n'))
+        pg.click('.week'); check(pg.locator('.cal-grid').count() == 1, 'Tocar la semana abre el calendario')
+        pg.click('[data-t=hoy]')
+
         # --- 12: reloj parado sin entreno
         pg.wait_for_timeout(400)
         check(pg.evaluate('() => window.__gym.clockOn') is False, 'Reloj interno parado sin entreno ni descanso')
@@ -70,10 +77,7 @@ try:
         pg.reload(); pg.wait_for_selector('header.top h1')
         check(pg.input_value('section.ex.open input[data-f=r][data-j="0"]') == '9', 'Si cierras justo después de escribir, no se pierde')
 
-        # --- 11: vibración
-        h0 = pg.evaluate('() => window.__gym.haptics.length')
         pg.click('section.ex.open .chk >> nth=0')
-        check(pg.evaluate('() => window.__gym.haptics.length') == h0 + 1, 'Vibración al marcar serie')
 
         # --- 1: franja compacta
         dock = pg.locator('#dock').bounding_box(); tb = pg.locator('#timer').bounding_box(); wb = pg.locator('#wprog').bounding_box(); nb = pg.locator('#tabs').bounding_box()
@@ -137,12 +141,13 @@ try:
             pg.locator('section.ex.open .chk').nth(j).click(); pg.click('[data-a=t-x]')
         check(pg.locator('section.ex').nth(4).get_attribute('class').find('open') >= 0, 'Se salta el que ya está hecho')
 
-        # ajuste de vibración
-        pg.click('[data-t=aj]'); pg.click('[data-f=haptic]')
-        check(pg.evaluate('() => window.__gym.state.settings.haptic') is False, 'Vibración desactivable en Ajustes')
-        pg.click('[data-t=hoy]'); h1 = pg.evaluate('() => window.__gym.haptics.length')
+        # la vibración experimental se retiró en la v2.0
+        pg.click('[data-t=aj]')
+        check(pg.locator('[data-f=haptic]').count() == 0, 'Sin ajuste de vibración')
+        sw = pg.locator('[data-f=sound]').bounding_box()
+        check(sw['width'] >= 50 and 30 <= sw['height'] <= 32, 'Interruptores con forma de interruptor (%dx%d)' % (sw['width'], sw['height']))
+        pg.click('[data-t=hoy]')
         pg.click('section.ex.open .chk >> nth=0'); pg.click('[data-a=t-x]')
-        check(pg.evaluate('() => window.__gym.haptics.length') == h1, 'Desactivada: no vibra')
 
         # --- terminar: orden cambiado ofrece guardar en la rutina; borrar sesión con Deshacer
         pg.click('[data-a=finish]'); pg.click('[data-a=finish-yes]'); pg.wait_for_selector('#modal h2'); pg.click('#modal [data-a=close]')
