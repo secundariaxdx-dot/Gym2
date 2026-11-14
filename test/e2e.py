@@ -83,8 +83,12 @@ try:
         check(pg.locator('section.ex').count() == 7, 'Ejercicio añadido a la sesión')
         pg.screenshot(path=OUT + '/04-anadido.png')
         # quitar el recién añadido
-        pg.click('[data-a=rm-ex]'); pg.click('[data-a=confirm-yes]')
-        check(pg.locator('section.ex').count() == 6, 'Ejercicio quitado de la sesión')
+        pg.click('[data-a=rm-ex]')
+        check(pg.locator('section.ex').count() == 6, 'Ejercicio quitado de la sesión (sin series marcadas no pregunta)')
+        pg.click('#toast [data-a=undo]')
+        check(pg.locator('section.ex').count() == 7, 'Deshacer lo devuelve')
+        pg.click('[data-a=rm-ex]')
+        check(pg.locator('section.ex').count() == 6, 'Quitado otra vez')
         # cambiar el abierto
         pg.click('[data-a=swap]')
         pg.wait_for_selector('#pick-list .item')

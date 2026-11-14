@@ -42,7 +42,12 @@
   }
   var state = load();
   var timer = state.timer || null; // el descanso en marcha sobrevive a un reinicio de la app
-  function save() { state.timer = timer; try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { memoryOnly = true; } }
+  var saveT = null;
+  function save() { if (saveT) { clearTimeout(saveT); saveT = null; } state.timer = timer; try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { memoryOnly = true; } }
+  // Al escribir: guarda cuando paras medio segundo (y siempre al salir de la app), no en cada tecla
+  function saveSoon() { clearTimeout(saveT); saveT = setTimeout(function () { saveT = null; save(); }, 500); }
+  document.addEventListener('visibilitychange', function () { if (document.hidden && saveT) save(); });
+  window.addEventListener('pagehide', function () { if (saveT) save(); });
   save();
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* nada */ }
 
@@ -82,7 +87,7 @@
   function startTimer(ex) {
     var rest = E.restFor(ex || {});
     timer = { end: Date.now() + rest * 1000, total: rest, fired: false };
-    save(); updateTimer(); pushSync();
+    save(); updateTimer(); pushSync(); clockSync();
   }
   function clearTimer() { if (timer && timer.armed) pushStop(); timer = null; }
 
@@ -111,11 +116,22 @@
   // Texto de la siguiente serie para la notificación (sin nombre de ejercicio). Se queda en el iPhone:
   // el servidor solo sabe la hora del aviso.
   var lastDoneI = -1;
+  // siguiente ejercicio con series sin marcar: primero los de después, luego los de antes
+  function nextPending(i) {
+    var es = state.active.entries, n = es.length;
+    for (var k = 1; k <= n; k++) { var x = (i + k) % n; if (x !== i && es[x].sets.some(function (st) { return !st.done; })) return x; }
+    return -1;
+  }
+  function scrollToOpen(block) {
+    var sec = $('section.ex.open'); if (!sec) return;
+    var smooth = !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+    requestAnimationFrame(function () { try { sec.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: block }); } catch (e) { sec.scrollIntoView(); } });
+  }
   function nextSetText() {
     var a = state.active; if (!a) return '';
     function find(i) { var e = a.entries[i]; if (!e) return -1; for (var j = 0; j < e.sets.length; j++) if (!e.sets[j].done) return j; return -1; }
     var i = lastDoneI >= 0 && lastDoneI < a.entries.length ? lastDoneI : Math.max(0, a.open), j = find(i), other = false;
-    if (j < 0) { other = true; i = -1; for (var k = 0; k < a.entries.length; k++) { var jj = find(k); if (jj >= 0) { i = k; j = jj; break; } } }
+    if (j < 0) { other = true; i = nextPending(i); j = i >= 0 ? find(i) : -1; }
     if (i < 0) return 'Última serie hecha 💪 Ya puedes terminar el entreno';
     var e = a.entries[i], st = e.sets[j], p = e.plan && e.plan[j] || {};
     var w = String(st.w).trim() !== '' ? num(st.w) : p.w, r = String(st.r).trim() !== '' ? num(st.r) : p.r;
@@ -201,6 +217,18 @@
     } catch (e) { /* nada */ }
   }
   function beep() { play('end'); }
+  var haptics = [];
+  function haptic() {
+    if (state.settings.haptic === false) return;
+    haptics.push(Date.now());
+    try {
+      if (navigator.vibrate) { navigator.vibrate(12); return; }
+      // iOS 18+: activar un <input switch> produce un toque háptico (solo dentro de un toque del usuario)
+      var l = document.createElement('label'); l.setAttribute('aria-hidden', 'true'); l.style.display = 'none';
+      var inp = document.createElement('input'); inp.type = 'checkbox'; inp.setAttribute('switch', ''); l.appendChild(inp);
+      document.head.appendChild(l); l.click(); document.head.removeChild(l);
+    } catch (e) { /* nada */ }
+  }
   function updateTimer() {
     var el = $('#timer'); if (!el) return;
     if (!timer) { el.hidden = true; document.body.classList.remove('has-timer'); return; }
@@ -208,18 +236,27 @@
     el.hidden = false; document.body.classList.add('has-timer');
     if (timer.armed && !document.hidden && left <= 2.5) pushSync();
     if (left <= 0) {
-      if (!timer.fired) { timer.fired = true; beep(); }
+      if (!timer.fired) { timer.fired = true; if (-left <= 5) beep(); } // si vuelves mucho después, no suena
       if (-left > 5) { timer = null; save(); el.hidden = true; document.body.classList.remove('has-timer'); return; }
       el.classList.add('fin'); $('.t', el).textContent = '¡Listo!'; $('.bar i', el).style.width = '100%';
     } else {
       el.classList.remove('fin'); $('.t', el).textContent = mmss(left); $('.bar i', el).style.width = Math.max(0, 100 - (left / timer.total) * 100) + '%';
     }
   }
-  setInterval(function () {
+  // Reloj interno: solo corre con un entreno o un descanso en marcha y la app a la vista
+  var clock = null, clockRuns = 0;
+  function clockTick() {
     updateTimer();
     var el = $('#elapsed');
     if (el && state.active) el.textContent = mmss((Date.now() - state.active.t0) / 1000);
-  }, 250);
+    clockSync();
+  }
+  function clockSync() {
+    var need = (!!timer || !!state.active) && !document.hidden;
+    if (need && !clock) { clock = setInterval(clockTick, 250); clockRuns++; }
+    else if (!need && clock) { clearInterval(clock); clock = null; }
+  }
+  document.addEventListener('visibilitychange', clockSync);
 
   var wl = null;
   function wake() { try { if (state.active && navigator.wakeLock) navigator.wakeLock.request('screen').then(function (l) { wl = l; }).catch(function () { }); } catch (e) { /* nada */ } }
@@ -308,7 +345,8 @@
         '<input class="in" data-f="r" data-i="' + i + '" data-j="' + j + '" inputmode="numeric" autocomplete="off" value="' + esc(s.r) + '" placeholder="' + (p ? p.r : '') + '" aria-label="Repeticiones serie ' + (j + 1) + '">' +
         '<button class="chk" data-a="done" data-i="' + i + '" data-j="' + j + '" aria-label="Marcar serie ' + (j + 1) + '">' + CHECK + '</button></div>';
     });
-    h += '<div class="ex-actions"><button class="btn sm" data-a="add-set" data-i="' + i + '">+ Serie</button><button class="btn sm" data-a="del-set" data-i="' + i + '">− Serie</button><button class="btn sm" data-a="swap" data-i="' + i + '">Cambiar</button><button class="btn sm" data-a="ex-set" data-i="' + i + '">Ajustes</button><button class="btn sm danger" data-a="rm-ex" data-i="' + i + '">Quitar</button></div></div></section>';
+    h += '<div class="ex-actions"><button class="btn sm" data-a="add-set" data-i="' + i + '">+ Serie</button><button class="btn sm" data-a="del-set" data-i="' + i + '">− Serie</button><button class="btn sm" data-a="swap" data-i="' + i + '">Cambiar</button><button class="btn sm" data-a="ex-set" data-i="' + i + '">Ajustes</button><button class="btn sm danger" data-a="rm-ex" data-i="' + i + '">Quitar</button>' +
+      '<button class="btn sm" data-a="ex-up" data-i="' + i + '" aria-label="Mover antes"' + (i === 0 ? ' disabled' : '') + '>↑</button><button class="btn sm" data-a="ex-down" data-i="' + i + '" aria-label="Mover después"' + (i === state.active.entries.length - 1 ? ' disabled' : '') + '>↓</button></div></div></section>';
     return h;
   }
 
@@ -374,7 +412,7 @@
       h += '<button class="cal-d' + (di && di.gym.length ? ' gym' : '') + (k === today ? ' today' : '') + (fut ? ' fut' : '') + '"' + (fut ? ' disabled' : ' data-a="day" data-d="' + k + '"') + '><span class="dn">' + d + '</span><span class="ic">' + ic + '</span></button>';
     }
     h += '</div>';
-    h += '<div class="cal-sum"><span><span class="ic-gym">' + MINI_DB + '</span> ' + nGym + ' días de gimnasio</span><span>⚽ ' + nF + '</span><span>👟 ' + nC + '</span></div>';
+    h += '<div class="cal-sum"><span><span class="ic-gym">' + MINI_DB + '</span> ' + nGym + (nGym === 1 ? ' día' : ' días') + ' de gimnasio</span><span>⚽ ' + nF + '</span><span>👟 ' + nC + '</span></div>';
     h += '<div class="muted small pad0">Toca un día para ver el entreno o anotar fútbol o correr.</div>';
     return h;
   }
@@ -533,8 +571,11 @@
         return '<button class="card item mine" data-a="edit-ex" data-id="' + esc(e.id) + '"><div class="ex-name">' + esc(e.name) + '</div><div class="muted small">Próximo: ' + esc(nx) + '</div></button>';
       });
     }
-    if (lib.length) {
-      h += '<h3 class="sec">Biblioteca · ' + lib.length + '</h3><div class="muted small pad0">Toca uno para añadirlo a tus ejercicios.</div>' + group(lib, function (e) {
+    var libShown = ui.libOpen || !!q || !!fm || !!fe;
+    if (lib.length && !libShown) h += '<button class="btn lib-tog" data-a="lib-tog" aria-expanded="false"><span>Biblioteca · ' + lib.length + ' ejercicios</span><span>Ver ▾</span></button>';
+    else if (lib.length) {
+      h += (q || fm || fe ? '<h3 class="sec">Biblioteca · ' + lib.length + '</h3>' : '<button class="btn lib-tog" data-a="lib-tog" aria-expanded="true"><span>Biblioteca · ' + lib.length + ' ejercicios</span><span>Ocultar ▴</span></button>') +
+        '<div class="muted small pad0">Toca uno para añadirlo a tus ejercicios.</div>' + group(lib, function (e) {
         return '<button class="card item lib" data-a="edit-lib" data-id="' + esc(e.id) + '"><div class="ex-name">' + esc(e.name) + '</div><div class="muted small">' + esc(EQUIP[e.equip]) + '</div></button>';
       });
     }
@@ -741,12 +782,13 @@
       '<div class="r-btns"><button class="btn primary" data-a="backup">Guardar copia</button><button class="btn" data-a="copy">Copiar texto</button></div>' +
       '<div class="r-btns"><button class="btn" data-a="import-file">Importar archivo</button><button class="btn" data-a="import-paste">Pegar texto</button></div>' +
       '<input id="file" type="file" accept="application/json,.json" hidden></section>' +
-      '<section class="card pad"><h2>Descanso</h2><label class="switch"><span>Sonidos (serie hecha y fin del descanso)</span><input type="checkbox" data-f="sound"' + (state.settings.sound !== false ? ' checked' : '') + '></label></section>' +
+      '<section class="card pad"><h2>Descanso</h2><label class="switch"><span>Sonidos (serie hecha y fin del descanso)</span><input type="checkbox" data-f="sound"' + (state.settings.sound !== false ? ' checked' : '') + '></label>' +
+      '<label class="switch"><span>Vibración al marcar serie (experimental)</span><input type="checkbox" data-f="haptic"' + (state.settings.haptic !== false ? ' checked' : '') + '></label></section>' +
       pushSection() +
       '<section class="card pad"><h2>Fútbol y correr</h2><label class="switch"><span>Cuentan (poco) en la fatiga de piernas</span><input type="checkbox" data-f="actFatigue"' + (state.settings.actFatigue !== false ? ' checked' : '') + '></label></section>' +
       '<section class="card pad"><h2>Instalar en el iPhone</h2><p class="muted small">En Safari: botón Compartir → «Añadir a pantalla de inicio». Así se abre a pantalla completa y los datos se conservan.</p></section>' +
       '<section class="card pad"><h2>Datos iniciales</h2><p class="muted small">Vuelve a cargar tus 17 ejercicios con la última sesión de las capturas. Borra tu historial.</p><button class="btn danger" data-a="reset">Restaurar datos iniciales</button></section>' +
-      '<div class="muted small center" id="ver">Versión 1.9 ({{VER}}) · progresión al fallo con doble progresión</div>';
+      '<div class="muted small center" id="ver">Versión 1.10 ({{VER}}) · progresión al fallo con doble progresión</div>';
   }
 
   /* ---------- modales ---------- */
@@ -861,13 +903,15 @@
     var y = window.scrollY;
     var html = ui.tab === 'hoy' ? (state.active ? viewWorkout() : viewHoy()) : ui.tab === 'cal' ? viewCal() : ui.tab === 'ej' ? viewEj() : ui.tab === 'prog' ? viewProg() : viewSet();
     $('#app').innerHTML = html;
-    renderTabs(); updateTimer(); syncMute(); updateWprog();
+    renderTabs(); updateTimer(); syncMute(); updateWprog(); clockSync();
     window.scrollTo(0, y);
   }
   var toastT = null;
-  function toast(msg) {
-    var t = $('#toast'); t.textContent = msg; t.hidden = false;
-    clearTimeout(toastT); toastT = setTimeout(function () { t.hidden = true; }, 2200);
+  var toastUndo = null;
+  function toast(msg, undo) {
+    var t = $('#toast'); t.textContent = msg; t.hidden = false; toastUndo = undo || null;
+    if (undo) { var b = document.createElement('button'); b.setAttribute('data-a', 'undo'); b.textContent = 'Deshacer'; t.appendChild(b); }
+    clearTimeout(toastT); toastT = setTimeout(function () { t.hidden = true; toastUndo = null; }, undo ? 7000 : 2200);
   }
 
   /* ---------- acciones ---------- */
@@ -1001,17 +1045,44 @@
         var wOk = !isNaN(w) || (exr && exr.equip === 'corporal');
         if (!(r > 0) || !wOk) { var row = $('[data-row="' + i + '-' + j + '"]'); if (row) { row.classList.remove('err'); void row.offsetWidth; row.classList.add('err'); } toast('Anota peso y repeticiones'); break; }
         s.done = true; s.w = isNaN(w) ? 0 : w; s.r = r; lastDoneI = i;
-        play('tick');
+        play('tick'); haptic();
         checkPR(e, j);
         startTimer(exr || { fatigue: e.fatigue });
-        if (e.sets.every(function (x) { return x.done; }) && i + 1 < act.entries.length) act.open = i + 1;
-        save(); render(); break;
+        var moved = false;
+        if (e.sets.every(function (x) { return x.done; })) {
+          var nx = nextPending(i);
+          if (nx >= 0) { act.open = nx; moved = true; } else if (i + 1 < act.entries.length) act.open = i + 1;
+        }
+        save(); render(); if (moved) scrollToOpen('start'); break;
       }
       case 'add-set': { var e1 = act.entries[i]; var lastS = e1.sets[e1.sets.length - 1]; e1.sets.push({ w: lastS ? lastS.w : '', r: '', done: false }); save(); render(); break; }
       case 'del-set': { var e2 = act.entries[i]; if (e2.sets.length > 1 && !e2.sets[e2.sets.length - 1].done) { e2.sets.pop(); save(); render(); } else toast('No se puede quitar esa serie'); break; }
       case 'swap': openModal({ type: 'pick', ctx: 'swap', i: i, fm: act.entries[i].muscle, fe: '', q: '' }); break;
       case 'add-ex': openModal({ type: 'pick', ctx: 'add' }); break;
-      case 'rm-ex': ask('Quitar ejercicio', 'Se quita de esta sesión (no se borra de tu lista).', 'Quitar', function () { act.entries.splice(i, 1); act.open = Math.min(act.open, act.entries.length - 1); save(); closeModal(); render(); }, true); break;
+      case 'undo': if (toastUndo) { var uf = toastUndo; toastUndo = null; clearTimeout(toastT); $('#toast').hidden = true; uf(); } break;
+      case 'rm-ex': {
+        var rmE = act.entries[i], rmId = act.id, rmOpen = act.open;
+        var rmDo = function () {
+          act.entries.splice(i, 1); act.open = Math.min(act.open, act.entries.length - 1); lastDoneI = -1; save(); closeModal(); render();
+          toast('Ejercicio quitado', function () {
+            if (!state.active || state.active.id !== rmId) return;
+            state.active.entries.splice(Math.min(i, state.active.entries.length), 0, rmE); state.active.open = rmOpen; save(); render();
+          });
+        };
+        // con series ya marcadas se pregunta antes; si no, se quita y se puede deshacer
+        if (rmE.sets.some(function (x) { return x.done; })) ask('Quitar ejercicio', 'Tiene series marcadas. Se quita de esta sesión (no se borra de tu lista).', 'Quitar', rmDo, true);
+        else rmDo();
+        break;
+      }
+      // ---- 10: mover un ejercicio dentro del entreno
+      case 'ex-up': case 'ex-down': {
+        var mj = a === 'ex-up' ? i - 1 : i + 1;
+        if (mj < 0 || mj >= act.entries.length) break;
+        var mt = act.entries[i]; act.entries[i] = act.entries[mj]; act.entries[mj] = mt;
+        if (act.open === i) act.open = mj; else if (act.open === mj) act.open = i;
+        if (lastDoneI === i) lastDoneI = mj; else if (lastDoneI === mj) lastDoneI = i;
+        save(); render(); scrollToOpen('nearest'); break;
+      }
       case 'ex-set': { var ex0 = exById(act.entries[i].exId); if (ex0) openExEdit(ex0, false); break; }
       case 'stall-apply': {
         var en = act.entries[i], ex1 = exById(en.exId); if (!ex1) break;
@@ -1052,6 +1123,7 @@
         break;
       }
       case 'edit-lib': { var lb = libById(el.getAttribute('data-id')); if (lb) openExEdit(libToExercise(lb), true); break; }
+      case 'lib-tog': ui.libOpen = !ui.libOpen; $('#ex-list').innerHTML = exListHtml(); break;
       case 'flt': {
         var sc = el.getAttribute('data-scope'), fk = el.getAttribute('data-k') === 'm' ? 'fm' : 'fe', fv = el.getAttribute('data-v');
         if (sc === 'ej') { ui[fk] = ui[fk] === fv ? '' : fv; $('#ej-filters').innerHTML = filtersHtml('ej', ui.fm, ui.fe); $('#ex-list').innerHTML = exListHtml(); }
@@ -1095,7 +1167,12 @@
       case 'musc-tog': ui.progMOpen = !ui.progMOpen; render(); break;
       case 'prog-ex': ui.progEx = ui.progEx === el.getAttribute('data-id') ? null : el.getAttribute('data-id'); render(); break;
       case 'hist': ui.histOpen = ui.histOpen === el.getAttribute('data-id') ? null : el.getAttribute('data-id'); render(); break;
-      case 'del-sess': { var sid = el.getAttribute('data-id'); ask('Borrar sesión', 'Se elimina del historial y de los cálculos.', 'Borrar', function () { state.sessions = state.sessions.filter(function (x) { return x.id !== sid; }); ui.histOpen = null; save(); closeModal(); render(); }, true); break; }
+      case 'del-sess': { var sid = el.getAttribute('data-id'); ask('Borrar sesión', 'Se elimina del historial y de los cálculos.', 'Borrar', function () {
+        var di = -1; state.sessions.forEach(function (x, k) { if (x.id === sid) di = k; });
+        if (di < 0) { closeModal(); return; }
+        var ds = state.sessions.splice(di, 1)[0]; ui.histOpen = null; save(); closeModal(); render();
+        toast('Sesión borrada', function () { state.sessions.splice(Math.min(di, state.sessions.length), 0, ds); save(); render(); });
+      }, true); break; }
       case 'backup': backup(); break;
       case 'copy': {
         var txt = exportData();
@@ -1114,8 +1191,8 @@
     var t = ev.target, f = t.getAttribute && t.getAttribute('data-f'); if (!f) return;
     if (f === 'w' || f === 'r') {
       var s = state.active.entries[+t.getAttribute('data-i')].sets[+t.getAttribute('data-j')];
-      s[f] = t.value; if (s.done) { s.done = false; var row = t.closest('.set'); if (row) row.classList.remove('done'); }
-      save();
+      s[f] = t.value; if (s.done) { s.done = false; var row = t.closest('.set'); if (row) row.classList.remove('done'); save(); updateWprog(); }
+      else saveSoon();
     } else if (f === 'q') { ui.query = t.value; $('#ex-list').innerHTML = exListHtml(); }
     else if (f === 'pq') { ui.modal.q = t.value; $('#pick-list').innerHTML = pickList(); }
     else if (f === 'rname' && ui.modal && state.routines[ui.modal.key]) { state.routines[ui.modal.key].name = t.value.trim() || 'Rutina'; save(); render(); }
@@ -1124,6 +1201,7 @@
     var t = ev.target;
     if (t.getAttribute && t.getAttribute('data-f') === 'sound') { state.settings.sound = t.checked; save(); syncMute(); pushSync(); }
     else if (t.getAttribute && t.getAttribute('data-f') === 'push') { if (t.checked) enablePush(); else { if (timer && timer.armed) { pushStop(); timer.armed = 0; } state.settings.push = false; save(); render(); } }
+    else if (t.getAttribute && t.getAttribute('data-f') === 'haptic') { state.settings.haptic = t.checked; save(); if (t.checked) haptic(); }
     else if (t.getAttribute && t.getAttribute('data-f') === 'progM') { ui.progM = t.value; render(); }
     else if (t.getAttribute && t.getAttribute('data-f') === 'actFatigue') { state.settings.actFatigue = t.checked; save(); }
     else if (t.id === 'file' && t.files && t.files[0]) { var rd = new FileReader(); rd.onload = function () { importText(String(rd.result)); }; rd.readAsText(t.files[0]); t.value = ''; }
@@ -1154,5 +1232,5 @@
     });
     window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (r) { swReg = r; }).catch(function () { }); });
   }
-  window.__gym = { get state() { return state; }, E: E, sounds: sounds }; // útil para pruebas
+  window.__gym = { get state() { return state; }, E: E, sounds: sounds, haptics: haptics, get clockOn() { return !!clock; } }; // útil para pruebas
 })();

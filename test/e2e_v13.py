@@ -23,6 +23,8 @@ try:
         # --- Biblioteca y filtros en Ejercicios
         pg.click('[data-t=ej]'); pg.wait_for_selector('#ex-list')
         check(pg.locator('#ex-list .item.mine').count() == 17, 'Mis 17 ejercicios')
+        check(pg.locator('#ex-list .item.lib').count() == 0 and pg.locator('[data-a=lib-tog]').count() == 1, 'Biblioteca plegada al entrar')
+        pg.click('[data-a=lib-tog]')
         nlib = pg.locator('#ex-list .item.lib').count()
         check(nlib == 122 - 17, 'Biblioteca sin duplicar los míos: %d' % nlib)
         pg.click('[data-a=flt][data-k=m][data-v="Cuádriceps"]')

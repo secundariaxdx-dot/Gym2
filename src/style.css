@@ -20,8 +20,7 @@ body {
   touch-action: manipulation; overscroll-behavior-y: none;
 }
 body.modal-open { overflow: hidden; }
-#app { padding: calc(env(safe-area-inset-top) + 14px) 16px calc(var(--tab-h) + var(--wp, 0px) + env(safe-area-inset-bottom) + 28px); max-width: 560px; margin: 0 auto; }
-body.has-timer #app { padding-bottom: calc(var(--tab-h) + var(--wp, 0px) + env(safe-area-inset-bottom) + 96px); }
+#app { padding: calc(env(safe-area-inset-top) + 14px) 16px calc(var(--tab-h) + var(--wp, 0px) + var(--tm, 0px) + env(safe-area-inset-bottom) + 28px); max-width: 560px; margin: 0 auto; }
 h1 { font-size: 30px; line-height: 1.1; margin: 0; letter-spacing: -0.02em; }
 h2 { font-size: 19px; margin: 0 0 4px; }
 h3.sec { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 22px 4px 8px; font-weight: 600; }
@@ -112,18 +111,9 @@ p { margin: 6px 0 12px; }
 .tab { flex: 1; height: var(--tab-h); appearance: none; background: none; border: 0; color: var(--muted); font: inherit; font-size: 11.5px; font-weight: 600; display: flex; flex-direction: column; gap: 3px; align-items: center; justify-content: center; cursor: pointer; }
 .tab.on { color: var(--accent); }
 
-#timer { position: fixed; left: 12px; right: 12px; bottom: calc(var(--tab-h) + var(--wp, 0px) + env(safe-area-inset-bottom) + 10px); z-index: 25; background: var(--text); color: var(--bg); border-radius: 16px; padding: 10px 12px 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); max-width: 536px; margin: 0 auto; }
-#timer.fin { background: var(--accent); color: var(--on-accent); }
-#timer .row { display: flex; align-items: center; gap: 8px; }
-#timer .tt { flex: 1; display: flex; flex-direction: column; line-height: 1.05; }
-#timer .tl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.7; font-weight: 700; }
-#timer .t { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; }
-#timer button { appearance: none; border: 0; border-radius: 10px; min-height: 40px; padding: 0 11px; font: inherit; font-weight: 700; background: color-mix(in srgb, var(--bg) 18%, transparent); color: inherit; cursor: pointer; }
-#timer .bar { height: 4px; border-radius: 4px; background: color-mix(in srgb, var(--bg) 22%, transparent); margin-top: 8px; overflow: hidden; }
-#timer .bar i { display: block; height: 100%; width: 0; background: currentColor; transition: width 0.25s linear; }
 
 #modal { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 40; display: flex; align-items: flex-end; justify-content: center; }
-#modal[hidden], #timer[hidden], #toast[hidden] { display: none; }
+#modal[hidden], #timer[hidden], #toast[hidden], #wprog[hidden] { display: none; }
 .sheet { background: var(--bg); width: 100%; max-width: 560px; max-height: 88vh; overflow-y: auto; border-radius: 22px 22px 0 0; padding: 20px 16px calc(20px + env(safe-area-inset-bottom)); animation: up 0.2s ease-out; }
 @keyframes up { from { transform: translateY(40px); opacity: 0; } }
 .sheet label { display: block; font-size: 13px; color: var(--muted); font-weight: 600; margin: 10px 0 0; }
@@ -133,8 +123,7 @@ p { margin: 6px 0 12px; }
 .sheet label.switch input { width: 24px; height: 24px; margin: 0; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .ta { width: 100%; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--text); font: 13px/1.4 ui-monospace, Menlo, monospace; padding: 10px; }
-#toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--tab-h) + var(--wp, 0px) + env(safe-area-inset-bottom) + 20px); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-weight: 600; font-size: 14px; z-index: 60; max-width: 90vw; }
-body.has-timer #toast { bottom: calc(var(--tab-h) + var(--wp, 0px) + env(safe-area-inset-bottom) + 100px); }
+#toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--tab-h) + var(--wp, 0px) + var(--tm, 0px) + env(safe-area-inset-bottom) + 14px); background: var(--text); color: var(--bg); padding: 10px 16px; display: flex; align-items: center; gap: 12px; border-radius: 12px; font-weight: 600; font-size: 14px; z-index: 60; max-width: 90vw; }
 
 .li.col .chip { align-self: flex-start; }
 
@@ -186,12 +175,6 @@ body.has-timer #toast { bottom: calc(var(--tab-h) + var(--wp, 0px) + env(safe-ar
 .btn.mute-b { padding: 8px 10px; }
 .mute-b.off { opacity: 0.6; }
 
-/* Línea de progreso del entreno (encima de las pestañas) */
-body.has-wprog { --wp: 26px; }
-#wprog { position: fixed; left: 0; right: 0; bottom: calc(var(--tab-h) + env(safe-area-inset-bottom)); height: 26px; z-index: 21; display: flex; align-items: center; gap: 10px; padding: 0 16px; background: color-mix(in srgb, var(--card) 92%, transparent); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border-top: 1px solid var(--line); }
-#wprog .wp-bar { flex: 1; height: 6px; border-radius: 6px; background: var(--input); overflow: hidden; }
-#wprog .wp-bar i { display: block; height: 100%; width: 0; border-radius: 6px; background: var(--accent); transition: width 0.35s ease; }
-#wprog .wp-t { font-size: 12px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* Gráficos de progreso */
 .chart { position: relative; margin: 6px 0 2px; }
@@ -214,7 +197,31 @@ body.has-wprog { --wp: 26px; }
 .chart-sum { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
 .chart-sum b { color: var(--text); }
 select.musc { flex: 1; min-width: 0; width: 100%; font: inherit; font-weight: 600; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--input); color: var(--text); margin: 4px 0 8px; }
-#wprog[hidden] { display: none; }
 .musc-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .musc-row select.musc { margin: 0; }
 .musc-row .btn { white-space: nowrap; min-height: 44px; }
+
+/* Franja única encima de las pestañas: descanso (si lo hay) + línea de progreso del entreno */
+body.has-timer { --tm: 50px; }
+body.has-wprog { --wp: 22px; }
+#dock { position: fixed; left: 0; right: 0; bottom: calc(var(--tab-h) + env(safe-area-inset-bottom)); z-index: 21; background: color-mix(in srgb, var(--card) 92%, transparent); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border-top: 1px solid var(--line); }
+body:not(.has-timer):not(.has-wprog) #dock { display: none; }
+#timer { position: relative; height: 50px; }
+#timer.fin { background: var(--accent); color: var(--on-accent); }
+#timer .row { display: flex; align-items: center; gap: 6px; height: 100%; padding: 0 12px; max-width: 560px; margin: 0 auto; }
+#timer .tt { flex: 1; display: flex; flex-direction: column; line-height: 1.05; min-width: 0; }
+#timer .tl { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; }
+#timer.fin .tl { color: inherit; opacity: 0.75; }
+#timer .t { font-size: 23px; font-weight: 800; font-variant-numeric: tabular-nums; }
+#timer button { appearance: none; border: 0; border-radius: 10px; height: 38px; padding: 0 11px; font: inherit; font-size: 15px; font-weight: 700; background: var(--input); color: inherit; cursor: pointer; }
+#timer.fin button { background: color-mix(in srgb, var(--on-accent) 14%, transparent); }
+#timer .bar { position: absolute; left: 0; right: 0; top: -1px; height: 3px; overflow: hidden; }
+#timer .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.25s linear; }
+#timer.fin .bar i { background: var(--on-accent); }
+#wprog { height: 22px; display: flex; align-items: center; gap: 10px; padding: 0 16px; max-width: 560px; margin: 0 auto; }
+#wprog .wp-bar { flex: 1; height: 5px; border-radius: 5px; background: var(--input); overflow: hidden; }
+#wprog .wp-bar i { display: block; height: 100%; width: 0; border-radius: 5px; background: var(--accent); transition: width 0.35s ease; }
+#wprog .wp-t { font-size: 11.5px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+#toast button { appearance: none; border: 0; background: none; font: inherit; font-weight: 800; color: inherit; text-decoration: underline; padding: 4px 2px; cursor: pointer; white-space: nowrap; }
+section.ex { scroll-margin-top: calc(env(safe-area-inset-top) + 12px); scroll-margin-bottom: 150px; }
+.lib-tog { width: 100%; display: flex; justify-content: space-between; align-items: center; margin-top: 14px; }
