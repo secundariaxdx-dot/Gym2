@@ -821,9 +821,30 @@ select.musc { flex: 1; min-width: 0; width: 100%; font: inherit; font-weight: 60
     var want = !!timer && !timer.fired && soundOn() && (document.hidden || timer.end - Date.now() > 2500);
     if (want) {
       if (timer.armed === timer.end) return;
-      var t = timer; t.armed = t.end; save();
+      var t = timer; t.armed = t.end; save(); saveNextNote(t.end);
       pushCall('/arm', { at: t.end }, keep).catch(function () { if (t.armed === t.end) t.armed = 0; });
     } else if (timer && timer.armed) { timer.armed = 0; save(); pushCall('/cancel', {}, keep).catch(noop); }
+  }
+  // Texto de la siguiente serie para la notificación (sin nombre de ejercicio). Se queda en el iPhone:
+  // el servidor solo sabe la hora del aviso.
+  var lastDoneI = -1;
+  function nextSetText() {
+    var a = state.active; if (!a) return '';
+    function find(i) { var e = a.entries[i]; if (!e) return -1; for (var j = 0; j < e.sets.length; j++) if (!e.sets[j].done) return j; return -1; }
+    var i = lastDoneI >= 0 && lastDoneI < a.entries.length ? lastDoneI : Math.max(0, a.open), j = find(i), other = false;
+    if (j < 0) { other = true; i = -1; for (var k = 0; k < a.entries.length; k++) { var jj = find(k); if (jj >= 0) { i = k; j = jj; break; } } }
+    if (i < 0) return 'Última serie hecha 💪 Ya puedes terminar el entreno';
+    var e = a.entries[i], st = e.sets[j], p = e.plan && e.plan[j] || {};
+    var w = String(st.w).trim() !== '' ? num(st.w) : p.w, r = String(st.r).trim() !== '' ? num(st.r) : p.r;
+    var what = w > 0 && r > 0 ? fmt(w) + ' kg × ' + r : r > 0 ? r + ' reps' : w > 0 ? fmt(w) + ' kg' : '';
+    return (other ? 'Siguiente ejercicio · serie ' : 'Serie ') + (j + 1) + '/' + e.sets.length + (what ? ': ' + what : '');
+  }
+  function saveNextNote(end, text) {
+    try {
+      if (!window.caches) return;
+      var body = JSON.stringify({ body: text || nextSetText(), end: end });
+      caches.open('gym-meta').then(function (c) { return c.put('/__next', new Response(body, { headers: { 'Content-Type': 'application/json' } })); }).catch(noop);
+    } catch (e) { /* nada */ }
   }
   function pushStop() { if (pushReady()) pushCall('/cancel', {}).catch(noop); }
   function b64uBytes(s) { var b = atob(s.replace(/-/g, '+').replace(/_/g, '/')), a = new Uint8Array(b.length); for (var k = 0; k < b.length; k++) a[k] = b.charCodeAt(k); return a; }
@@ -1442,7 +1463,7 @@ select.musc { flex: 1; min-width: 0; width: 100%; font: inherit; font-weight: 60
       '<section class="card pad"><h2>Fútbol y correr</h2><label class="switch"><span>Cuentan (poco) en la fatiga de piernas</span><input type="checkbox" data-f="actFatigue"' + (state.settings.actFatigue !== false ? ' checked' : '') + '></label></section>' +
       '<section class="card pad"><h2>Instalar en el iPhone</h2><p class="muted small">En Safari: botón Compartir → «Añadir a pantalla de inicio». Así se abre a pantalla completa y los datos se conservan.</p></section>' +
       '<section class="card pad"><h2>Datos iniciales</h2><p class="muted small">Vuelve a cargar tus 17 ejercicios con la última sesión de las capturas. Borra tu historial.</p><button class="btn danger" data-a="reset">Restaurar datos iniciales</button></section>' +
-      '<div class="muted small center" id="ver">Versión 1.8 (gym-v10) · progresión al fallo con doble progresión</div>';
+      '<div class="muted small center" id="ver">Versión 1.9 (gym-v11) · progresión al fallo con doble progresión</div>';
   }
 
   /* ---------- modales ---------- */
@@ -1678,6 +1699,7 @@ select.musc { flex: 1; min-width: 0; width: 100%; font: inherit; font-weight: 60
       case 'mute': state.settings.sound = !soundOn(); save(); syncMute(); pushSync(); if (soundOn()) play('tick'); toast(soundOn() ? 'Sonido activado' : 'Sonido silenciado'); break;
       case 'push-test':
         if (!pushReady()) break;
+        saveNextNote(Date.now() + 8000, 'Prueba ✓ Aquí verás la siguiente serie: peso × reps');
         pushCall('/arm', { at: Date.now() + 8000 }).then(function () { toast('Bloquea el iPhone: el aviso llega en 8 s'); }).catch(function (e) { toast('Error: ' + e.message); });
         break;
       case 'confirm-yes': var fn = ui.modal.fn; if (fn) fn(); break;
@@ -1695,7 +1717,7 @@ select.musc { flex: 1; min-width: 0; width: 100%; font: inherit; font-weight: 60
         var w = num(s.w), r = num(s.r), exr = exById(e.exId);
         var wOk = !isNaN(w) || (exr && exr.equip === 'corporal');
         if (!(r > 0) || !wOk) { var row = $('[data-row="' + i + '-' + j + '"]'); if (row) { row.classList.remove('err'); void row.offsetWidth; row.classList.add('err'); } toast('Anota peso y repeticiones'); break; }
-        s.done = true; s.w = isNaN(w) ? 0 : w; s.r = r;
+        s.done = true; s.w = isNaN(w) ? 0 : w; s.r = r; lastDoneI = i;
         play('tick');
         checkPR(e, j);
         startTimer(exr || { fatigue: e.fatigue });

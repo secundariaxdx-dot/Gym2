@@ -1,5 +1,5 @@
 import os, json
-CACHE = 'gym-v10'  # súbelo cuando cambie algo que el iPhone deba recargar (se muestra en Ajustes)
+CACHE = 'gym-v11'  # súbelo cuando cambie algo que el iPhone deba recargar (se muestra en Ajustes)
 from PIL import Image, ImageDraw
 root = os.path.dirname(os.path.abspath(__file__))
 src, dist = os.path.join(root, 'src'), root  # la web se genera en la raíz: GitHub Pages la sirve desde ahí
@@ -29,12 +29,21 @@ json.dump(manifest, open(os.path.join(dist, 'manifest.webmanifest'), 'w'), inden
 sw = """const CACHE = '%%CACHE%%';
 const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting())); });
-self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
+self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE && k !== 'gym-meta').map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 // Caché primero: abre al instante aunque la señal sea mala. Se actualiza en segundo plano
 // y la versión nueva se ve la siguiente vez que abres la app.
-// Aviso de fin de descanso (el servidor manda un push vacío; aquí se pone el texto)
+// Aviso de fin de descanso. El servidor manda un push vacío; el texto (siguiente serie)
+// lo dejó la app en la caché 'gym-meta' al marcar la serie, sin salir del iPhone.
 self.addEventListener('push', e => {
-  e.waitUntil(self.registration.showNotification('⏱️ Descanso terminado', { body: 'A por la siguiente serie 💪', tag: 'rest', renotify: true, icon: 'icon-192.png' }));
+  e.waitUntil((async () => {
+    let body = 'A por la siguiente serie 💪';
+    try {
+      const r = await (await caches.open('gym-meta')).match('/__next');
+      const n = r && await r.json();
+      if (n && n.body && Math.abs(Date.now() - n.end) < 15 * 60000) body = n.body;
+    } catch (err) { /* texto por defecto */ }
+    await self.registration.showNotification('⏱️ Descanso terminado', { body, tag: 'rest', renotify: true, icon: 'icon-192.png' });
+  })());
 });
 self.addEventListener('notificationclick', e => {
   e.notification.close();

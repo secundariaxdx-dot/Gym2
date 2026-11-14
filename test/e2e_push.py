@@ -49,6 +49,7 @@ try:
         b = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
         ctx = b.new_context(viewport={'width': 375, 'height': 812}, device_scale_factor=2, is_mobile=True, has_touch=True, color_scheme='dark')
         ctx.add_init_script(STUB)
+        ctx.grant_permissions(['notifications'], origin='http://localhost:8771')
         pg = ctx.new_page()
         pg.on('pageerror', lambda e: errors.append(str(e)))
         pg.on('console', lambda m: errors.append(m.text) if m.type == 'error' else None)
@@ -144,6 +145,51 @@ try:
         pg.click('[data-t=aj]'); pg.click('[data-f=push]'); pg.wait_for_function('() => window.__gym.state.settings.push === true', timeout=8000)
         pg.click('[data-f=push]')
         check(pg.evaluate('() => window.__gym.state.settings.push') is False and pg.locator('[data-a=push-test]').count() == 0, 'Desactivar desde Ajustes')
+
+        # ---- Texto de la notificación: siguiente serie, sin nombre de ejercicio (se queda en el iPhone)
+        ctx = b.new_context(viewport={'width': 375, 'height': 812}, is_mobile=True, has_touch=True)
+        ctx.add_init_script(STUB); ctx.grant_permissions(['notifications'], origin='http://localhost:8771')
+        pg = ctx.new_page(); pg.on('pageerror', lambda e: errors.append(str(e)))
+        pg.goto('http://localhost:8771/'); pg.wait_for_selector('.routine')
+        pg.wait_for_function('() => navigator.serviceWorker.controller', timeout=10000)
+        pg.click('[data-t=aj]'); pg.click('[data-f=push]'); pg.wait_for_function('() => window.__gym.state.settings.push === true', timeout=8000)
+        pg.click('[data-t=hoy]'); pg.click('[data-a=start][data-k=push]'); pg.wait_for_selector('header.top h1')
+        pg.click('section.ex.open .chk >> nth=0'); time.sleep(0.8)
+        note = lambda: pg.evaluate("() => caches.open('gym-meta').then(c => c.match('/__next')).then(r => r && r.json())")
+        n1 = note()
+        check(n1 and n1['body'] == 'Serie 2/3: 85 kg × 11', 'Texto guardado: %s' % (n1 and n1['body']))
+        cdp = ctx.new_cdp_session(pg); regs = []
+        cdp.on('ServiceWorker.workerRegistrationUpdated', lambda e: regs.extend(e['registrations']))
+        cdp.send('ServiceWorker.enable')
+        for _ in range(30):
+            live = [r for r in regs if not r.get('isDeleted')]
+            if live: break
+            pg.wait_for_timeout(200)
+        rid = live[0]['registrationId']
+        def deliver():
+            pg.evaluate("() => navigator.serviceWorker.ready.then(r => r.getNotifications()).then(ns => ns.forEach(n => n.close()))")
+            cdp.send('ServiceWorker.deliverPushMessage', {'origin': 'http://localhost:8771', 'registrationId': rid, 'data': ''})
+            # la notificación puede cerrarse sola en Chrome sin interfaz: se lee en cuanto aparece
+            for _ in range(100):
+                v = pg.evaluate("() => navigator.serviceWorker.ready.then(r => r.getNotifications()).then(ns => ns.length ? { title: ns[0].title, body: ns[0].body } : null)")
+                if v: return v
+                pg.wait_for_timeout(50)
+            return {'title': None, 'body': None}
+        nt = deliver()
+        check(nt['title'] == '⏱️ Descanso terminado' and nt['body'] == 'Serie 2/3: 85 kg × 11', 'Notificación con la siguiente serie: %s' % nt)
+        # cambiar el peso de la siguiente serie y re-programar (±15) actualiza el texto
+        pg.fill('section.ex.open input[data-f=w][data-j="1"]', '87,5'); pg.click('[data-a=t-p]'); time.sleep(0.5)
+        check(note()['body'] == 'Serie 2/3: 87,5 kg × 11', '±15 actualiza el texto: %s' % note()['body'])
+        # última serie del ejercicio -> siguiente ejercicio
+        for j in (1, 2):
+            if pg.locator('section.ex').first.locator('.set.done').count() <= j: pg.locator('section.ex').first.locator('.chk').nth(j).click(); time.sleep(0.3)
+        b2 = note()['body']
+        check(b2.startswith('Siguiente ejercicio · serie 1/'), 'Al acabar el ejercicio: %s' % b2)
+        check('Press' not in b2 and 'pecho' not in b2.lower(), 'Sin nombre de ejercicio')
+        # sin texto guardado (o caducado) -> texto por defecto
+        pg.evaluate("() => caches.open('gym-meta').then(c => c.delete('/__next'))")
+        check(deliver()['body'] == 'A por la siguiente serie 💪', 'Sin texto guardado: mensaje por defecto')
+        pg.click('[data-a=t-x]'); time.sleep(0.5)
         b.close()
 finally:
     srv.terminate(); fake.shutdown()
