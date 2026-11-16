@@ -404,7 +404,10 @@ button.li-btn:last-child { border-bottom: 0; }
    se desplaza nunca: solo lo hace #scroller, y la franja del descanso y las pestañas son piezas normales
    debajo de él. */
 html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
-body { display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
+html { background: var(--bg); }
+/* En la app instalada, iOS calcula «100 %» sin la franja del indicador de inicio y quedaba un hueco negro
+   debajo de las pestañas: se ancla el cuerpo a los cuatro bordes de la pantalla. */
+body { position: fixed; top: 0; right: 0; bottom: 0; left: 0; height: auto; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
 #scroller { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 body.modal-open #scroller { overflow: hidden; }
 #app { padding: 14px 16px 28px; }
