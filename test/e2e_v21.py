@@ -71,9 +71,9 @@ try:
 
         # --- detalle de un entreno
         pg.locator('[data-a=sess]').nth(3).scroll_into_view_if_needed()
-        pg.evaluate("() => document.addEventListener('click', () => { window.__y0 = window.scrollY; }, { capture: true, once: true })")
+        pg.evaluate("() => document.addEventListener('click', () => { window.__y0 = document.querySelector('#scroller').scrollTop; }, { capture: true, once: true })")
         pg.locator('[data-a=sess]').first.click(); y0 = pg.evaluate('() => window.__y0')
-        check(pg.locator('h1').inner_text() == 'Pull' and pg.evaluate('() => window.scrollY') == 0, 'Abre el detalle arriba del todo')
+        check(pg.locator('h1').inner_text() == 'Pull' and pg.evaluate("() => document.querySelector('#scroller').scrollTop") == 0, 'Abre el detalle arriba del todo')
         tl = pg.locator('.tile b').all_inner_texts()
         check(tl[0] == '1 h 00 min' and tl[2] == '9' and tl[3] == '🏆 1', 'Detalle: duración, series y récords: %s' % tl)
         check(pg.locator('.sd').count() == 5 and pg.locator('.sd-row').count() == 9, 'Todos los ejercicios y series')
@@ -86,7 +86,7 @@ try:
         check('Dorsales · 4' in pg.inner_text('.ss-mus') and 'Bíceps · 3' in pg.inner_text('.ss-mus'), 'Series por músculo: ' + pg.inner_text('.ss-mus').replace('\n', ' '))
         pg.screenshot(path=OUT + '/82-entreno-detalle.png')
         pg.click('[data-a=sess-back]')
-        check(pg.locator('[data-a=sess]').count() == 25 and y0 > 100 and abs(pg.evaluate('() => window.scrollY') - y0) < 5, 'Volver deja la lista donde estaba (%d px)' % y0)
+        check(pg.locator('[data-a=sess]').count() == 25 and y0 > 100 and abs(pg.evaluate("() => document.querySelector('#scroller').scrollTop") - y0) < 5, 'Volver deja la lista donde estaba (%d px)' % y0)
         # el más antiguo: primera vez del ejercicio que no estaba en los datos iniciales
         pg.locator('[data-a=sess]').last.click()
         check('Primera vez' in pg.locator('.sd').nth(4).inner_text(), 'Primera vez de un ejercicio')

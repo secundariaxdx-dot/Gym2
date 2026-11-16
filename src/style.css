@@ -375,9 +375,9 @@ button.li-btn:last-child { border-bottom: 0; }
 .sess .slide.fig { background: color-mix(in srgb, var(--input) 55%, var(--card)); border: 0; }
 .fig-t { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
 .bm { flex: 1; min-height: 0; width: 100%; margin: 6px 0 4px; }
-.bm-base { fill: color-mix(in srgb, var(--muted) 30%, var(--card)); }
-.bm-m { fill: color-mix(in srgb, var(--muted) 46%, var(--card)); stroke: var(--card); stroke-width: 1.1; stroke-linejoin: round; }
-.sess .bm-m { stroke: color-mix(in srgb, var(--input) 55%, var(--card)); }
+.bm { --bm-skin: color-mix(in srgb, var(--muted) 34%, var(--card)); }
+.bm-base { fill: var(--bm-skin); stroke: var(--bm-skin); stroke-width: 1; stroke-linejoin: round; }
+.bm-m { fill: color-mix(in srgb, var(--muted) 52%, var(--card)); stroke: var(--bm-skin); stroke-width: 1.1; stroke-linejoin: round; }
 .bm-m.on { fill: var(--accent); }
 .fig-l { width: 100%; display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; color: var(--muted); }
 .fig-l > span:first-child, .fig-l > span:last-child { width: 30%; text-align: center; }
@@ -397,3 +397,16 @@ button.li-btn:last-child { border-bottom: 0; }
 .sheet label.ph-add { display: flex; font-size: 16px; color: var(--text); font-weight: 600; margin: 10px 0 0; }
 .sheet label.ph-add input { display: block; position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; opacity: 0; }
 .ph-full { display: block; width: 100%; max-height: 62vh; object-fit: contain; border-radius: 16px; background: var(--input); }
+
+/* ================= v2.3 · estructura estable en iOS =================
+   Antes la página entera se desplazaba y la barra inferior era una capa fija (position: fixed). En iOS, al
+   volver de otra app, esa capa podía quedarse descolocada y moverse con el contenido. Ahora el documento no
+   se desplaza nunca: solo lo hace #scroller, y la franja del descanso y las pestañas son piezas normales
+   debajo de él. */
+html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+body { display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
+#scroller { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+body.modal-open #scroller { overflow: hidden; }
+#app { padding: 14px 16px 28px; }
+#dock, #tabs { position: static; flex: none; -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--card); }
+section.ex { scroll-margin-top: 12px; scroll-margin-bottom: 12px; }

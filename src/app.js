@@ -123,6 +123,18 @@
     return -1;
   }
   function animOpen() { var bd = $('section.ex.open .ex-body'); if (bd) bd.classList.add('anim'); }
+  // El contenido se desplaza dentro de #scroller; el documento no se mueve (ver style.css, v2.3)
+  function getY() { var sc = $('#scroller'); return sc ? sc.scrollTop : 0; }
+  function setY(y) { var sc = $('#scroller'); if (sc) sc.scrollTop = y; }
+  // iOS: al cerrar el teclado o volver de otra app puede dejar la pantalla desplazada; se recoloca
+  function resetViewport() { try { if (window.scrollX || window.scrollY) window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; } catch (e) { /* nada */ } }
+  document.addEventListener('focusout', function () { setTimeout(function () { var a = document.activeElement; if (!a || !/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) resetViewport(); }, 80); });
+  document.addEventListener('visibilitychange', function () {
+    // al salir de la app se cierra el teclado para que iOS no la guarde con la pantalla encogida
+    if (document.hidden) { var a = document.activeElement; if (a && a.blur && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) a.blur(); }
+    else resetViewport();
+  });
+  window.addEventListener('pageshow', resetViewport);
   function scrollToOpen(block) {
     var sec = $('section.ex.open'); if (!sec) return;
     var smooth = !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -769,7 +781,7 @@
 
   /* ---------- fotos de los entrenos ----------
      Se guardan en IndexedDB (no caben en localStorage): la sesión solo lleva la lista de ids en `photos`. */
-  var PDBP = null, purl = {}, PH_MAX = 6;
+  var PDBP = null, purl = {}, PH_MAX = 6, PH_PX = 800;
   function pdb() {
     if (!PDBP) PDBP = new Promise(function (res, rej) {
       try {
@@ -788,19 +800,19 @@
       });
     });
   }
-  function photoPut(id, blob) { return blob.arrayBuffer().then(function (buf) { return ptx('readwrite', function (st) { return st.put({ buf: buf, type: blob.type, t: Date.now() }, id); }); }); }
+  function photoPut(id, blob, t) { return blob.arrayBuffer().then(function (buf) { return ptx('readwrite', function (st) { return st.put({ buf: buf, type: blob.type, t: t || Date.now(), v: 2 }, id); }); }); }
   function photoGet(id) { return ptx('readonly', function (st) { return st.get(id); }); }
   function photoDel(id) { if (purl[id]) { URL.revokeObjectURL(purl[id]); delete purl[id]; } return ptx('readwrite', function (st) { return st.delete(id); }).catch(noop); }
-  // Reduce la foto a 1280 px de lado mayor y JPEG: ~200 KB en vez de varios MB
+  // Reduce la foto a 800 px de lado mayor y JPEG de calidad media: unos 50–80 KB en vez de varios MB
   function shrinkPhoto(file) {
     return new Promise(function (res, rej) {
       var url = URL.createObjectURL(file), im = new Image();
       im.onload = function () {
         try {
-          var k = Math.min(1, 1280 / Math.max(im.naturalWidth, im.naturalHeight)), c = document.createElement('canvas');
+          var k = Math.min(1, PH_PX / Math.max(im.naturalWidth, im.naturalHeight)), c = document.createElement('canvas');
           c.width = Math.max(1, Math.round(im.naturalWidth * k)); c.height = Math.max(1, Math.round(im.naturalHeight * k));
           c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
-          c.toBlob(function (b) { if (b) res(b); else rej(new Error('blob')); }, 'image/jpeg', 0.82);
+          c.toBlob(function (b) { if (b) res(b); else rej(new Error('blob')); }, 'image/jpeg', 0.6);
         } catch (e) { rej(e); }
       };
       im.onerror = function () { URL.revokeObjectURL(url); rej(new Error('img')); };
@@ -818,7 +830,7 @@
       }).catch(noop);
     }, Promise.resolve()).then(function () {
       if (!added) { toast('No se pudo guardar la foto'); return; }
-      save(); closeModal(); ui.tab = 'perfil'; ui.sessOpen = sid; render(); window.scrollTo(0, 0);
+      save(); closeModal(); ui.tab = 'perfil'; ui.sessOpen = sid; render(); setY(0);
       toast(added === 1 ? 'Foto añadida' : added + ' fotos añadidas');
     });
   }
@@ -844,41 +856,61 @@
       cur.onsuccess = function () { var c = cur.result; if (!c) return; if (!used[c.key] && Date.now() - ((c.value && c.value.t) || 0) > 7 * 86400000) c.delete(); c.continue(); };
     }).catch(noop);
   }
+  // Fotos guardadas con una versión anterior (más grandes): se recomprimen una vez al abrir
+  function slimPhotos() {
+    pdb().then(function (db) {
+      return new Promise(function (res) {
+        var old = [], cur = db.transaction('p', 'readonly').objectStore('p').openCursor();
+        cur.onsuccess = function () { var c = cur.result; if (!c) { res(old); return; } if (c.value && c.value.buf && c.value.v !== 2) old.push({ id: c.key, rec: c.value }); c.continue(); };
+        cur.onerror = function () { res(old); };
+      });
+    }).then(function (old) {
+      return old.reduce(function (pr, o) {
+        return pr.then(function () { return shrinkPhoto(new Blob([o.rec.buf], { type: o.rec.type || 'image/jpeg' })); })
+          .then(function (b) { if (purl[o.id]) { URL.revokeObjectURL(purl[o.id]); delete purl[o.id]; } return photoPut(o.id, b, o.rec.t); }).catch(noop);
+      }, Promise.resolve());
+    }).catch(noop);
+  }
   var CAM = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.6-2.2h6.8L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/></svg>';
   function photoBtn(sid, cls) { return '<label class="btn ' + cls + ' ph-add">' + CAM + '<span>Añadir foto</span><input type="file" accept="image/*" multiple data-f="photo" data-sid="' + esc(sid) + '"></label>'; }
 
   /* ---------- figura con los músculos trabajados ----------
      Media figura (lado derecho, eje en x = 0) que se dibuja también en espejo. Dibujo propio. */
-  var BM_BODY = 'M0 42 L6.5 42 C14 46 27 46 35 50 C44 53 49.5 60 50 71 L55 110 L62.5 158 C65 167 63.5 177 59 181 C54.5 183.5 51.5 177 51.5 170 L44 119 L37.5 88 L35 102 C34 116 29.5 128 28.5 140 C31 150 33 160 33 172 L30 233 C30 244 28 254 27 262 L23.5 316 C24.5 325 29.5 332 30 339 L11 339 C9.5 331 11 322 11 316 L7.5 262 C6 252 6 244 6.5 236 L2 172 L0 168 Z';
-  var BM_DELT = 'M31 50.5 C40 51 48.5 57 49 69 C49 75 47 79.5 44 82 C42.5 73 38 64.5 30.5 58.5 Z';
-  var BM_UARM = 'M40 89 C44 87 48 83 50.3 79 L54 106 C52.5 110.5 48 112 45 110.5 Z';
-  var BM_FARM = 'M45.5 117 C48.5 118.5 52.5 117.5 55.3 114 L61.5 156 C60 160 56 161 53.5 159.5 Z';
+  var BM_HEAD = 'M0 5 C11.5 5 18.5 13 18.5 26 C18.5 34 16.5 40.5 12.5 45.5 C9.5 49.5 5 52 0 52 Z';
+  var BM_BODY = 'M0 48 L9 48 C9 53 9.5 56 10 58 C17 64 30 67 42 70.5 C52 72.5 60 78.5 62.5 88.5 C64.5 97 65 106 66.5 114 C68 126 70.5 138 73 148 C76.5 160 80 174 82.5 188 L85 203 C87.5 212 88.5 224 86 232 C84 238 79 238 78 232 L77.5 222 C75.5 226 72.5 224 73 218 L73.5 205 C71 192 67 174 62 158 C60.5 153 59 148 58 144 C54.5 132 50.5 119 47 107 C46.5 122 42 142 30.5 160 C32 170 34 180 37.5 192 C39.5 204 40 220 38.5 240 C37.5 258 35 276 32.5 288 C32.5 293 33 297 34 302 C36.5 314 36.5 330 32.5 346 C30 358 26.5 368 24 378 C24 384 28.5 390 30.5 394 C31 397.5 27 398.5 22 398.5 L11 398.5 C9.5 392 12 384 12.5 378 C11.5 362 9.5 346 9 332 C8.8 320 9.5 308 11 298 C10.5 293 10 289 10 285 C8.5 262 6 240 3 218 L0 213 Z';
+  var BM_DELT = 'M42 71 C52 73 59.5 79 62 89 C63.5 97 63.5 104 61.5 111 C57.5 105 52.5 99.5 48 96.5 C44 89 41.5 81 41.5 74 Z';
+  var BM_UARM = 'M48.5 99 C53 101.5 58 106.5 61 112.5 C63.5 123 66 135 68.5 146 C65.5 150.5 61 151 58.5 148 C56 136 52.5 121 48.5 108.5 Z';
+  var BM_FARM = 'M60 153.5 C63.5 156 68.5 155.5 71.5 151.5 C75 163 78.5 177 81 190 L83 201.5 L75.5 204 C73 190.5 69 172 64 158.5 Z';
   var BM_FRONT = [
-    ['Trapecio', 'M7.5 43.5 C14 46.5 22 47 28 48.6 L9.5 52.3 Z'],
+    ['Trapecio', 'M10 58.5 C17 64 29 67 40 70.2 L25 74.5 L11 72.5 Z'],
     ['Hombros', BM_DELT],
-    ['Pecho', 'M2.5 55 L27 54.5 C32.5 58.5 35.5 66.5 36 77 C29 85.5 13.5 88 2.5 84 Z'],
+    ['Pecho', 'M2.5 75.5 L25 76.5 L40 72.8 C41 82 44 90 46.5 96 C45 106 38 113 28 115 C18 116.5 8 115 2.5 110 Z'],
     ['Bíceps', BM_UARM],
     ['Antebrazos', BM_FARM],
-    ['Abdominales', 'M2.5 88.5 C12.5 92 24 91 33.5 85.5 L33.8 102 C32.8 116 28.8 128 27 139.5 C20 144.5 10.5 146.5 2.5 147 Z'],
-    ['Aductores', 'M2.8 174 L12 171.5 C12 187 10 203 7 218 Z'],
-    ['Cuádriceps', 'M14.5 171 C20.5 168.3 28 169.3 31.5 174.5 L28.5 229 C25 235 13.5 235 9.5 229.5 C9.3 221 10.3 213 11.5 204 C13 192 14.5 182 14.5 171 Z'],
-    ['Gemelos', 'M9 247 C13 243 22.5 243 26 247.5 C26 262 24.5 280 22.8 299 L12.5 299 C10.8 280 9 262 9 247 Z']
+    ['Abdominales', 'M2 118 L16 117.5 C18 121 18.5 126 18 130 L2 131 Z'],
+    ['Abdominales', 'M2 134 L18 133 C18.5 138 18.5 142 18 146 L2 147 Z'],
+    ['Abdominales', 'M2 150 L18 149 C18 154 17.8 158 17.5 162 L2 163 Z'],
+    ['Abdominales', 'M2 166 L17.5 165 C17.5 178 13 194 2 208 Z'],
+    ['Abdominales', 'M21 118 C28 118.5 37 115 44 109 C44 122 40 141 28.5 160 C30 168 31.5 177 34 187 C29 193 24 197 20 199 C21 172 21.5 145 21 118 Z'],
+    ['Aductores', 'M3.5 220 L13 214.5 C12.5 232 11.5 250 10.8 266 C8 252 5.5 236 3.5 220 Z'],
+    ['Cuádriceps', 'M15.5 213 C23 209.5 31 205 37 200.5 C38 214 37 240 35 262 C34 274 32.5 281 31 286 C26.5 290.5 17.5 290.5 13 286.5 C12 270 13 240 15.5 213 Z'],
+    ['Gemelos', 'M12.5 304 C17.5 300.5 27.5 300.5 32 304 C34.5 316 34.5 330 30.5 345 C28.5 356 26 366 24 373 L14.5 373 C13 360 11.5 346 11 332 C10.8 322 11.2 312 12.5 304 Z']
   ];
   var BM_BACK = [
-    ['Trapecio', 'M0 41 L6.5 42.5 C14.5 46.5 23 47.5 29.5 49.6 C21 56 10.5 70 0 92 Z'],
+    ['Trapecio', 'M0 52 L9.5 57 C16.5 63.5 29 66.5 40.5 70.5 C32 76 22.5 83 15 96.5 C9.5 107 4.5 123 2 139 L0 141 Z'],
     ['Hombros', BM_DELT],
-    ['Espalda', 'M30.5 53.2 C22.5 61 12.5 75.5 3.5 94.5 L3.5 101 C16.5 99 29 93.5 36.3 85.5 C36.3 73 34.8 61.5 30.5 53.2 Z'],
+    ['Espalda', 'M40 75.5 C32 80.5 24.5 87.5 17.5 99 C14.5 105 12.5 111 10.5 118 C22.5 118 36 113 45 104.5 C43 96 41 86 40 75.5 Z'],
     ['Tríceps', BM_UARM],
     ['Antebrazos', BM_FARM],
-    ['Dorsales', 'M35.8 89.8 C28 97 15.5 102 3.5 104 L3.5 129.5 C12.5 131.5 21 132.5 28 132.5 C30.3 120.5 33.8 105 35.8 89.8 Z'],
-    ['Lumbares', 'M3 133.2 C10.5 135.2 19 136.2 27.6 136.2 C28 141.5 29.5 146 31 150 L3 150 Z'],
-    ['Glúteos', 'M2 153.5 L31.8 153.5 C33.5 161 33.5 170 32 178 C24.5 186.5 8.5 186.5 2 180.5 Z'],
-    ['Isquios', 'M4 189.5 C12.5 193.5 24 192.5 31 186 L28.5 229 C25 235 13.5 235 9.5 229.5 C8.3 217 6 204 4 189.5 Z'],
-    ['Gemelos', 'M8.2 243 C13 238.5 24 238.5 27.8 243.8 C27.8 257 25.8 271 24 291 L12 291 C10 272 8.2 257 8.2 243 Z']
+    ['Dorsales', 'M45 108.5 C35.5 116.5 22 121.5 9 122 C7.5 128 6 135 5 142 L12.5 168.5 C18 166.5 23.5 163.5 28.5 160 C39.5 142 44.5 124 45 108.5 Z'],
+    ['Lumbares', 'M2.5 145 L10.5 171 C17 169.5 23.5 166.5 28.8 163 C30 170 31.5 178 33.5 186.5 C23 184.5 11.5 186.5 2.5 192 Z'],
+    ['Glúteos', 'M2.5 196.5 C12 190 25.5 188.5 35 190.5 C38.5 200 39.5 214 38 226 C30 236.5 14 238 5.5 230 L3 218 Z'],
+    ['Isquios', 'M6.5 236 C15 242 29 240.5 37.5 231 C38 246 36.5 264 34.5 276 C33.5 281 32.5 285 31.5 287.5 C26 291 17.5 291 13 287.5 C11.5 272 8.5 252 6.5 236 Z'],
+    ['Gemelos', 'M11.5 300 C17 296.5 29 296.5 33.5 300.5 C36 314 35.5 330 31.5 344 C29.5 350 27 354 23.5 356.5 L17.5 356.5 C14 353 11.8 345 11 333 C10.6 321 10.8 310 11.5 300 Z']
   ];
   function bodyFig(parts, w) {
     function both(d, attr) { return '<path' + attr + ' d="' + d + '"/><path' + attr + ' d="' + d + '" transform="scale(-1 1)"/>'; }
-    var g = '<ellipse class="bm-base" cx="0" cy="19.5" rx="12.5" ry="15.5"/>' + both(BM_BODY, ' class="bm-base"');
+    var g = both(BM_HEAD, ' class="bm-base"') + both(BM_BODY, ' class="bm-base"');
     parts.forEach(function (p) {
       var v = w[p[0]] || 0;
       g += both(p[1], ' class="bm-m' + (v ? ' on' : '') + '" data-m="' + p[0] + '"' + (v ? ' style="fill-opacity:' + (0.34 + 0.66 * v).toFixed(2) + '"' : ''));
@@ -899,7 +931,7 @@
   }
   function bodyMap(x) {
     var w = muscleWeights(x), names = Object.keys(w).sort(function (a, b) { return w[b] - w[a]; });
-    return '<svg class="bm" viewBox="0 0 276 346" role="img" aria-label="Músculos trabajados: ' + esc(names.join(', ')) + '"><g transform="translate(69 3)">' + bodyFig(BM_FRONT, w) + '</g><g transform="translate(207 3)">' + bodyFig(BM_BACK, w) + '</g></svg>';
+    return '<svg class="bm" viewBox="0 0 376 402" role="img" aria-label="Músculos trabajados: ' + esc(names.join(', ')) + '"><g transform="translate(92 1)">' + bodyFig(BM_FRONT, w) + '</g><g transform="translate(284 1)">' + bodyFig(BM_BACK, w) + '</g></svg>';
   }
   // Carrusel: las fotos y, al deslizar, la figura de músculos
   function mediaHtml(x, inDetail) {
@@ -1030,13 +1062,13 @@
       '<section class="card pad"><h2>Copia de seguridad</h2><p class="muted small">Tus datos están solo en este iPhone. ' + (lb ? 'Última copia: ' + fmtDate(lb) + '.' : 'Aún no has hecho ninguna copia.') + '</p>' +
       '<div class="r-btns"><button class="btn primary" data-a="backup">Guardar copia</button><button class="btn" data-a="copy">Copiar texto</button></div>' +
       '<div class="r-btns"><button class="btn" data-a="import-file">Importar archivo</button><button class="btn" data-a="import-paste">Pegar texto</button></div>' +
-      '<input id="file" type="file" accept="application/json,.json" hidden><p class="muted small" style="margin-top:10px">Las fotos de los entrenos se quedan solo en este iPhone: no van dentro de la copia.</p></section>' +
+      '<input id="file" type="file" accept="application/json,.json" hidden><p class="muted small" style="margin-top:10px">Las fotos de los entrenos se guardan muy reducidas (unos 60 KB cada una) y solo en este iPhone: no van dentro de la copia.</p></section>' +
       '<section class="card pad"><h2>Descanso</h2><label class="switch"><span>Sonidos (serie hecha y fin del descanso)</span><input type="checkbox" data-f="sound"' + (state.settings.sound !== false ? ' checked' : '') + '></label></section>' +
       pushSection() +
       '<section class="card pad"><h2>Fútbol y correr</h2><label class="switch"><span>Cuentan (poco) en la fatiga de piernas</span><input type="checkbox" data-f="actFatigue"' + (state.settings.actFatigue !== false ? ' checked' : '') + '></label></section>' +
       '<section class="card pad"><h2>Instalar en el iPhone</h2><p class="muted small">En Safari: botón Compartir → «Añadir a pantalla de inicio». Así se abre a pantalla completa y los datos se conservan.</p></section>' +
       '<section class="card pad"><h2>Datos iniciales</h2><p class="muted small">Vuelve a cargar tus 17 ejercicios con la última sesión de las capturas. Borra tu historial.</p><button class="btn danger" data-a="reset">Restaurar datos iniciales</button></section>' +
-      '<div class="muted small center" id="ver">Versión 2.2 ({{VER}}) · progresión al fallo con doble progresión</div>';
+      '<div class="muted small center" id="ver">Versión 2.3 ({{VER}}) · progresión al fallo con doble progresión</div>';
   }
 
   /* ---------- modales ---------- */
@@ -1151,11 +1183,11 @@
     el.setAttribute('role', 'progressbar'); el.setAttribute('aria-valuenow', pct); el.setAttribute('aria-label', 'Progreso del entreno');
   }
   function render() {
-    var y = window.scrollY;
+    var y = getY();
     var html = ui.tab === 'hoy' ? (state.active ? viewWorkout() : viewHoy()) : ui.tab === 'cal' ? viewCal() : ui.tab === 'ej' ? viewEj() : ui.tab === 'prog' ? viewProg() : ui.tab === 'perfil' ? viewPerfil() : viewSet();
     $('#app').innerHTML = html;
     renderTabs(); updateTimer(); syncMute(); updateWprog(); clockSync(); hydratePhotos();
-    window.scrollTo(0, y);
+    setY(y);
   }
   var toastT = null;
   var toastUndo = null;
@@ -1260,7 +1292,7 @@
     var a = el.getAttribute('data-a'), i = parseInt(el.getAttribute('data-i'), 10), j = parseInt(el.getAttribute('data-j'), 10);
     var act = state.active;
     switch (a) {
-      case 'tab': { ui.tab = el.getAttribute('data-t'); ui.sessOpen = null; closeModal(); render(); window.scrollTo(0, 0); var ap = $('#app'); ap.classList.remove('enter'); void ap.offsetWidth; ap.classList.add('enter'); break; }
+      case 'tab': { ui.tab = el.getAttribute('data-t'); ui.sessOpen = null; closeModal(); render(); setY(0); var ap = $('#app'); ap.classList.remove('enter'); void ap.offsetWidth; ap.classList.add('enter'); break; }
       case 'close': closeModal(); break;
       case 'cal-prev': case 'cal-next': { var c = calState(); var d = new Date(c.y, c.m + (a === 'cal-next' ? 1 : -1), 1); ui.cal = { y: d.getFullYear(), m: d.getMonth() }; render(); break; }
       case 'day': openModal({ type: 'day', day: el.getAttribute('data-d') }); break;
@@ -1420,8 +1452,8 @@
       case 'r-add': openModal({ type: 'pick', ctx: 'routine', key: ui.modal.key }); break;
       case 'musc-tog': ui.progMOpen = !ui.progMOpen; render(); break;
       case 'sess': {
-        if (ui.tab === 'perfil' && !ui.sessOpen) ui.pfScroll = window.scrollY;
-        ui.tab = 'perfil'; ui.sessOpen = el.getAttribute('data-id'); closeModal(); render(); window.scrollTo(0, 0);
+        if (ui.tab === 'perfil' && !ui.sessOpen) ui.pfScroll = getY();
+        ui.tab = 'perfil'; ui.sessOpen = el.getAttribute('data-id'); closeModal(); render(); setY(0);
         var ap2 = $('#app'); ap2.classList.remove('enter'); void ap2.offsetWidth; ap2.classList.add('enter'); break;
       }
       case 'photo': openModal({ type: 'photo', id: el.getAttribute('data-id'), sid: el.getAttribute('data-sid') }); hydratePhotos(); break;
@@ -1434,7 +1466,7 @@
         toast('Foto borrada', function () { clearTimeout(pdel); var py = sessById(px.id); if (py) { (py.photos = py.photos || []).splice(Math.min(pi, py.photos.length), 0, pid); save(); render(); } });
         break;
       }
-      case 'sess-back': ui.sessOpen = null; render(); window.scrollTo(0, ui.pfScroll || 0); break;
+      case 'sess-back': ui.sessOpen = null; render(); setY(ui.pfScroll || 0); break;
       case 'pf-m': ui.pfM = el.getAttribute('data-v'); render(); break;
       case 'pf-more': ui.feedN = (ui.feedN || 20) + 20; render(); break;
       case 'prog-ex': ui.progEx = ui.progEx === el.getAttribute('data-id') ? null : el.getAttribute('data-id'); render(); break;
@@ -1488,7 +1520,7 @@
   /* ---------- arranque ---------- */
   render();
   if (state.active) wake();
-  pushRefresh(); closeRestNotes(); gcPhotos();
+  pushRefresh(); closeRestNotes(); gcPhotos(); slimPhotos();
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     // Versión nueva: se recarga sola (si estás en mitad de un entreno, al volver a la app; los datos ya están guardados)
     var hadSW = !!navigator.serviceWorker.controller, reloadPending = false, swReg = null;

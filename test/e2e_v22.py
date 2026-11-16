@@ -11,6 +11,11 @@ def check(c, m):
     if not c: fails.append(m)
 # fotos de prueba grandes (como las de una cámara) para comprobar que se reducen
 tmp = tempfile.mkdtemp(); pics = []
+# foto con ruido y degradados: el peor caso para comprimir, parecido a una foto real de cámara
+import random
+random.seed(7); rim = Image.new('RGB', (1500, 2000))
+rim.putdata([((x * 255 // 1500 + random.randint(-40, 40)) % 256, (y * 255 // 2000 + random.randint(-40, 40)) % 256, ((x + y) // 14 + random.randint(-40, 40)) % 256) for y in range(2000) for x in range(1500)])
+rim = rim.resize((3024, 4032)); real = os.path.join(tmp, 'real.jpg'); rim.save(real, quality=92)
 for i, col in enumerate([(200, 60, 40), (40, 110, 200), (60, 160, 80)]):
     im = Image.new('RGB', (3000, 4000), col); d = ImageDraw.Draw(im)
     for k in range(0, 4000, 200): d.rectangle([0, k, 3000, k + 90], fill=(col[2], col[0], col[1]))
@@ -63,11 +68,11 @@ try:
         kinds = pg.locator('.media .slide').evaluate_all('els => els.map(e => e.classList.contains("ph") ? "foto" : "figura")')
         check(kinds == ['foto', 'figura'], 'Primero la foto; al deslizar, la figura: %s' % kinds)
         dim = pg.locator('.media .slide.ph img').evaluate('e => [e.naturalWidth, e.naturalHeight]')
-        check(max(dim) == 1280 and dim == [960, 1280], 'La foto se reduce a 1280 px (%s, original 3000x4000)' % dim)
+        check(dim == [600, 800], 'La foto se reduce a 800 px (%s, original 3000x4000)' % dim)
         size = pg.evaluate("""async () => { const id = window.__gym.state.sessions.find(s => s.id === 'pull1').photos[0];
           const db = await new Promise(r => { const q = indexedDB.open('gym-photos'); q.onsuccess = () => r(q.result); });
           return await new Promise(r => { const q = db.transaction('p').objectStore('p').get(id); q.onsuccess = () => r(q.result.buf.byteLength); }); }""")
-        check(0 < size < 600000, 'Guardada en el iPhone (IndexedDB), %d KB' % (size // 1024))
+        check(0 < size < 150000, 'Guardada en el iPhone (IndexedDB), %d KB' % (size // 1024))
         check(len(pg.evaluate("() => localStorage.getItem('gymapp.v1')")) < 40000, 'Los datos de entrenos no engordan con las fotos')
         # deslizar
         check(pg.locator('.dots i.on').evaluate('e => [...e.parentNode.children].indexOf(e)') == 0, 'Punto 1 activo al principio')
@@ -78,6 +83,15 @@ try:
         pg.screenshot(path=OUT + '/91-carrusel-figura.png')
         pg.locator('.media').evaluate('e => e.scrollTo({ left: 0, behavior: "instant" })'); pg.wait_for_timeout(200)
         pg.screenshot(path=OUT + '/92-carrusel-foto.png')
+
+        # --- una foto "de verdad" (con mucho detalle) ocupa muy poco
+        pg.set_input_files('input[data-f=photo]', real)
+        pg.wait_for_function("() => window.__gym.state.sessions.find(s => s.id === 'pull1').photos.length === 2", timeout=20000)
+        rsize = pg.evaluate("""async () => { const id = window.__gym.state.sessions.find(s => s.id === 'pull1').photos[1];
+          const db = await new Promise(r => { const q = indexedDB.open('gym-photos'); q.onsuccess = () => r(q.result); });
+          return await new Promise(r => { const q = db.transaction('p').objectStore('p').get(id); q.onsuccess = () => r(q.result.buf.byteLength); }); }""")
+        check(rsize < 160000, 'Foto con mucho detalle de %d KB queda en %d KB' % (os.path.getsize(real) // 1024, rsize // 1024))
+        pg.locator('.media .slide.ph img').nth(1).click(); pg.click('[data-a=photo-del]'); pg.wait_for_timeout(300)
 
         # --- varias a la vez y límite
         pg.set_input_files('input[data-f=photo]', [pics[1], pics[2]])
@@ -102,6 +116,27 @@ try:
         pg.click('#toast [data-a=undo]')
         pg.wait_for_selector('.media .slide.ph img[src^="blob:"]')
         check(pg.locator('.media .slide.ph').count() == 3, 'Deshacer la recupera')
+
+        # --- fotos guardadas con la versión anterior (1280 px): se recomprimen solas al abrir
+        pg.evaluate("""async () => { const c = document.createElement('canvas'); c.width = 960; c.height = 1280; const g = c.getContext('2d');
+          for (let y = 0; y < 1280; y += 8) { g.fillStyle = 'hsl(' + (y % 360) + ' 70% 50%)'; g.fillRect(0, y, 960, 8); }
+          const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.82)), buf = await blob.arrayBuffer();
+          const db = await new Promise(r => { const q = indexedDB.open('gym-photos'); q.onsuccess = () => r(q.result); });
+          await new Promise(r => { const tx = db.transaction('p', 'readwrite'); tx.objectStore('p').put({ buf, type: 'image/jpeg', t: Date.now() }, 'vieja'); tx.oncomplete = r; });
+          const s = JSON.parse(localStorage.getItem('gymapp.v1')); s.sessions.find(x => x.id === 'pull1').photos.push('vieja'); localStorage.setItem('gymapp.v1', JSON.stringify(s)); window.__old = buf.byteLength; }""")
+        old_size = pg.evaluate('() => window.__old')
+        pg.reload(); pg.wait_for_selector('.routine')
+        get = """async () => { const db = await new Promise(r => { const q = indexedDB.open('gym-photos'); q.onsuccess = () => r(q.result); });
+          const rec = await new Promise(r => { const q = db.transaction('p').objectStore('p').get('vieja'); q.onsuccess = () => r(q.result); });
+          const bmp = await createImageBitmap(new Blob([rec.buf], { type: rec.type })); return { v: rec.v, size: rec.buf.byteLength, w: bmp.width, h: bmp.height }; }"""
+        for _ in range(40):
+            rec = pg.evaluate(get)
+            if rec['v'] == 2: break
+            pg.wait_for_timeout(250)
+        check(rec['v'] == 2 and [rec['w'], rec['h']] == [600, 800] and rec['size'] < old_size, 'Foto antigua recomprimida al abrir: %d KB -> %d KB' % (old_size // 1024, rec['size'] // 1024))
+        pg.click('[data-t=perfil]'); pg.locator('[data-a=sess][data-id=pull1]').click()
+        pg.wait_for_selector('.media .slide.ph img[data-ph=vieja][src^="blob:"]')
+        check(pg.locator('.media .slide.ph').count() == 4, 'Y se sigue viendo en su entreno')
 
         # --- piernas: otra figura
         pg.click('[data-a=sess-back]'); pg.locator('[data-a=sess][data-id=legs1]').click()

@@ -50,11 +50,11 @@ try:
         # --- 3: biblioteca plegada
         pg.click('[data-t=ej]'); pg.wait_for_selector('#ex-list')
         check(pg.locator('#ex-list .item.mine').count() == 17 and pg.locator('#ex-list .item.lib').count() == 0, 'Ejercicios: solo los míos, biblioteca plegada')
-        h_closed = pg.evaluate('() => document.documentElement.scrollHeight')
+        h_closed = pg.evaluate("() => document.querySelector('#scroller').scrollHeight")
         pg.screenshot(path=OUT + '/70-biblioteca-plegada.png')
         pg.click('[data-a=lib-tog]')
         check(pg.locator('#ex-list .item.lib').count() == 105, 'Ver: muestra los 105 de la biblioteca')
-        check(pg.evaluate('() => document.documentElement.scrollHeight') > h_closed * 2, 'La página plegada es mucho más corta (%d px)' % h_closed)
+        check(pg.evaluate("() => document.querySelector('#scroller').scrollHeight") > h_closed * 2, 'La página plegada es mucho más corta (%d px)' % h_closed)
         pg.click('[data-a=lib-tog]')
         check(pg.locator('#ex-list .item.lib').count() == 0, 'Ocultar la pliega')
         pg.fill('#q', 'hack')
@@ -88,10 +88,10 @@ try:
         check(all(h >= 38 for h, r in btns) and max(r for h, r in btns) <= 375, 'Botones del descanso cómodos y dentro de la pantalla: %s' % btns)
         last = pg.locator('section.ex').last.bounding_box()
         pg.wait_for_timeout(2800); pg.screenshot(path=OUT + '/71-franja-compacta.png')
-        pg.evaluate('() => window.scrollTo(0, document.documentElement.scrollHeight)'); pg.wait_for_timeout(200)
+        pg.evaluate("() => { const s = document.querySelector('#scroller'); s.scrollTop = s.scrollHeight; }"); pg.wait_for_timeout(200)
         db = pg.locator('[data-a=discard]').bounding_box(); dk = pg.locator('#dock').bounding_box()
         check(db['y'] + db['height'] <= dk['y'], 'La franja no tapa el final de la página')
-        pg.evaluate('() => window.scrollTo(0, 0)')
+        pg.evaluate("() => { document.querySelector('#scroller').scrollTop = 0; }")
 
         # --- 10: reordenar
         check(pg.locator('section.ex.open [data-a=ex-up]').is_disabled(), 'El primero no puede subir')
@@ -123,7 +123,7 @@ try:
         pg.click('[data-a=t-x]')
         pg.click('section.ex.open .chk >> nth=1'); pg.click('[data-a=t-x]')
         row = pg.locator('section.ex.open .chk').nth(2)
-        pg.evaluate("() => { const r = document.querySelectorAll('section.ex.open .chk')[2].getBoundingClientRect(); window.scrollBy(0, r.top - 20); }")
+        pg.evaluate("() => { const r = document.querySelectorAll('section.ex.open .chk')[2].getBoundingClientRect(); document.querySelector('#scroller').scrollTop += r.top - 20; }")
         pg.wait_for_timeout(200)
         row.click(); pg.wait_for_timeout(900)
         top = pg.locator('section.ex.open').bounding_box()['y']
