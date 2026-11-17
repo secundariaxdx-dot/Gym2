@@ -487,3 +487,16 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
 .card.clz[role=button] { cursor: pointer; transition: transform 0.12s ease; }
 .card.clz[role=button]:active { transform: scale(0.985); }
 .sheet .ta { margin-top: 4px; min-height: 52px; }
+
+/* v3.3 · gestos de iPhone */
+#app { will-change: auto; }
+#app.swiping { box-shadow: -10px 0 28px rgba(0, 0, 0, 0.35); background: var(--bg); min-height: 100%; }
+#app.back-in { animation: back-in 0.26s cubic-bezier(0.2, 0.8, 0.3, 1); }
+@keyframes back-in { from { transform: translateX(-28%); opacity: 0.55; } }
+#ptr { position: relative; height: 0; display: flex; justify-content: center; opacity: 0; pointer-events: none; z-index: 0; }
+#ptr .ptr-s { position: absolute; top: 12px; width: 26px; height: 26px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--muted); }
+#ptr.ready .ptr-s { border-top-color: var(--accent); }
+#ptr.spin { opacity: 1 !important; }
+#ptr.spin .ptr-s { border-top-color: var(--accent); animation: ptr-spin 0.7s linear infinite; }
+@keyframes ptr-spin { to { transform: rotate(360deg); } }
+#scroller { overscroll-behavior-x: none; }

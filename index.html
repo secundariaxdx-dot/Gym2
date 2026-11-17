@@ -504,10 +504,23 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
 .card.clz[role=button]:active { transform: scale(0.985); }
 .sheet .ta { margin-top: 4px; min-height: 52px; }
 
+/* v3.3 · gestos de iPhone */
+#app { will-change: auto; }
+#app.swiping { box-shadow: -10px 0 28px rgba(0, 0, 0, 0.35); background: var(--bg); min-height: 100%; }
+#app.back-in { animation: back-in 0.26s cubic-bezier(0.2, 0.8, 0.3, 1); }
+@keyframes back-in { from { transform: translateX(-28%); opacity: 0.55; } }
+#ptr { position: relative; height: 0; display: flex; justify-content: center; opacity: 0; pointer-events: none; z-index: 0; }
+#ptr .ptr-s { position: absolute; top: 12px; width: 26px; height: 26px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--muted); }
+#ptr.ready .ptr-s { border-top-color: var(--accent); }
+#ptr.spin { opacity: 1 !important; }
+#ptr.spin .ptr-s { border-top-color: var(--accent); animation: ptr-spin 0.7s linear infinite; }
+@keyframes ptr-spin { to { transform: rotate(360deg); } }
+#scroller { overscroll-behavior-x: none; }
+
 </style>
 </head>
 <body>
-<div id="scroller"><main id="app"></main></div>
+<div id="scroller"><div id="ptr" aria-hidden="true"><span class="ptr-s"></span></div><main id="app"></main></div>
 <div id="dock">
   <div id="timer" hidden>
     <div class="bar"><i></i></div>
@@ -2106,7 +2119,7 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
   function decPosts(ps) { return Promise.all(ps.map(decPost)).then(function (a) { return a.filter(Boolean); }); }
   function rcLoad(key, fn) {
     if (rc.loading[key]) return; rc.loading[key] = 1;
-    fn().then(function () { ui.socErr = ''; }, function (e) { ui.socErr = e && e.status === 401 ? 'auth' : 'net'; }).then(function () { delete rc.loading[key]; if (ui.tab === 'amigos' || ui.tab === 'perfil') render(); });
+    fn().then(function () { ui.socErr = ''; }, function (e) { ui.socErr = e && e.status === 401 ? 'auth' : 'net'; }).then(function () { delete rc.loading[key]; if (ui.tab === 'amigos' || ui.tab === 'perfil') { if (sw) swLate = true; else render(); } });
   }
   function loadFeed(more) {
     rcLoad('feed', function () {
@@ -2431,7 +2444,7 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
       '<section class="card pad"><h2>Fútbol y correr</h2><label class="switch"><span>Cuentan (poco) en la fatiga de piernas</span><input type="checkbox" data-f="actFatigue"' + (state.settings.actFatigue !== false ? ' checked' : '') + '></label></section>' +
       '<section class="card pad"><h2>Instalar en el iPhone</h2><p class="muted small">En Safari: botón Compartir → «Añadir a pantalla de inicio». Así se abre a pantalla completa y los datos se conservan.</p></section>' +
       '<section class="card pad"><h2>Datos iniciales</h2><p class="muted small">Vuelve a cargar tus 17 ejercicios con la última sesión de las capturas. Borra tu historial.</p><button class="btn danger" data-a="reset">Restaurar datos iniciales</button></section>' +
-      '<div class="muted small center" id="ver">Versión 3.0 (gym-v19) · progresión al fallo con doble progresión</div>';
+      '<div class="muted small center" id="ver">Versión 3.3 (gym-v20) · progresión al fallo con doble progresión</div>';
   }
 
   /* ---------- modales ---------- */
@@ -2659,6 +2672,92 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
   document.addEventListener('pointerdown', unlockAudio, { once: false, passive: true });
   document.addEventListener('visibilitychange', function () { if (!document.hidden) { unlockAudio(); updateTimer(); closeRestNotes(); } else pushSync(true); });
   window.addEventListener('pagehide', function () { pushSync(true); });
+
+  /* ---------- gestos de iPhone ----------
+     · deslizar desde el borde izquierdo: volver atrás (en pantallas con «‹ …»)
+     · bajar una hoja inferior: cerrarla
+     · tirar hacia abajo arriba del todo en Amigos/Perfil: actualizar */
+  var sw = null, SW_EDGE = 24, swLate = false;
+  function backBtn() { return ui.modal ? null : document.querySelector('#app .back'); }
+  function canPull() { return !ui.modal && soc() && (ui.tab === 'amigos' || ui.tab === 'perfil') && getY() <= 0 && !state.active; }
+  function animBackIn() {
+    var ap = $('#app'); if (!ap) return;
+    ap.classList.remove('enter', 'back-in'); void ap.offsetWidth; ap.classList.add('back-in');
+  }
+  // tocar «‹ …» también entra con la animación de volver
+  document.addEventListener('click', function (ev) { if (ev.target.closest && ev.target.closest('#app .back')) setTimeout(animBackIn, 0); }, true);
+  function swReset(el, prop) { if (el) { el.style.transition = ''; el.style[prop] = ''; } }
+  document.addEventListener('touchstart', function (ev) {
+    if (ev.touches.length !== 1 || sw) return;
+    var t = ev.touches[0], tg = ev.target;
+    var base = { x0: t.clientX, y0: t.clientY, t0: Date.now(), dx: 0, dy: 0, lock: null };
+    var sh = ui.modal && $('#modal .sheet');
+    if (t.clientX <= SW_EDGE && backBtn()) sw = Object.assign(base, { kind: 'back' });
+    else if (sh && sh.contains(tg) && !/^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName) && sh.scrollTop <= 0) sw = Object.assign(base, { kind: 'sheet', el: sh });
+    else if (canPull() && !(tg.closest && tg.closest('.media'))) sw = Object.assign(base, { kind: 'ptr' });
+    if (!sw) return;
+    sw.tg = tg;
+    tg.addEventListener('touchmove', swMove, { passive: false });
+    tg.addEventListener('touchend', swEnd); tg.addEventListener('touchcancel', swEnd);
+  }, { passive: true });
+  function swMove(ev) {
+    if (!sw) return;
+    var t = ev.touches[0]; sw.dx = t.clientX - sw.x0; sw.dy = t.clientY - sw.y0;
+    if (!sw.lock) {
+      if (Math.abs(sw.dx) < 8 && Math.abs(sw.dy) < 8) return;
+      if (sw.kind === 'back') sw.lock = sw.dx > Math.abs(sw.dy) ? 'x' : 'no';
+      else sw.lock = sw.dy > Math.abs(sw.dx) ? 'y' : 'no';
+      if (sw.lock === 'no') { sw = null; return; }
+      if (sw.kind !== 'sheet') $('#app').classList.remove('enter', 'back-in'); // que ninguna animación pise al dedo
+      else sw.el.classList.remove('opening');
+    }
+    ev.preventDefault();
+    if (sw.kind === 'back') {
+      var ap = $('#app'), d = Math.max(0, sw.dx);
+      ap.style.transition = 'none'; ap.style.transform = 'translateX(' + d + 'px)'; ap.classList.add('swiping');
+    } else if (sw.kind === 'sheet') {
+      var dy = Math.max(0, sw.dy);
+      sw.el.style.transition = 'none'; sw.el.style.transform = 'translateY(' + dy + 'px)';
+      $('#modal').style.backgroundColor = 'rgba(0,0,0,' + (0.55 * Math.max(0, 1 - dy / sw.el.offsetHeight)).toFixed(3) + ')';
+    } else {
+      var pull = Math.min(110, Math.max(0, sw.dy) * 0.5), ap2 = $('#app'), pr = $('#ptr');
+      ap2.style.transition = 'none'; ap2.style.transform = 'translateY(' + pull + 'px)';
+      pr.style.opacity = Math.min(1, pull / 60); pr.classList.toggle('ready', pull >= 60);
+      pr.firstChild.style.transform = 'rotate(' + (pull * 5) + 'deg)';
+    }
+  }
+  function swEnd() {
+    if (!sw) return;
+    var s2 = sw, el, W = window.innerWidth, ms = Math.max(1, Date.now() - s2.t0); sw = null;
+    s2.tg.removeEventListener('touchmove', swMove); s2.tg.removeEventListener('touchend', swEnd); s2.tg.removeEventListener('touchcancel', swEnd);
+    if (swLate) { swLate = false; setTimeout(function () { if (!sw) render(); }, 280); }
+    if (!s2.lock || s2.lock === 'no') return;
+    if (s2.kind === 'back') {
+      el = $('#app'); var go = s2.dx > W * 0.33 || (s2.dx > 40 && s2.dx / ms > 0.45);
+      el.style.transition = 'transform 0.22s cubic-bezier(0.2, 0.8, 0.3, 1)';
+      el.style.transform = 'translateX(' + (go ? W : 0) + 'px)';
+      setTimeout(function () {
+        el.classList.remove('swiping'); swReset(el, 'transform');
+        if (go) { var b = backBtn(); if (b) b.click(); }
+      }, 220);
+    } else if (s2.kind === 'sheet') {
+      el = s2.el; var close = s2.dy > 110 || (s2.dy > 30 && s2.dy / ms > 0.5);
+      el.style.transition = 'transform 0.22s ease-out'; el.style.transform = 'translateY(' + (close ? el.offsetHeight : 0) + 'px)';
+      $('#modal').style.transition = 'background-color 0.22s ease-out'; $('#modal').style.backgroundColor = close ? 'rgba(0,0,0,0)' : '';
+      setTimeout(function () { var md = $('#modal'); md.style.transition = ''; md.style.backgroundColor = ''; if (close) closeModal(); else swReset(el, 'transform'); }, 220);
+    } else {
+      el = $('#app'); var pr = $('#ptr'), refresh = Math.min(110, s2.dy * 0.5) >= 60;
+      el.style.transition = 'transform 0.25s ease-out'; el.style.transform = refresh ? 'translateY(48px)' : '';
+      if (refresh) {
+        pr.classList.add('spin');
+        rc.feedT = 0; rc.usersT = 0; Object.keys(rc.lists).forEach(function (k) { rc.lists[k].t = 0; }); Object.keys(rc.rels).forEach(function (k) { rc.rels[k].t = 0; });
+        socSync(true); render();
+        setTimeout(function () { el.style.transform = ''; pr.style.opacity = ''; pr.classList.remove('spin', 'ready'); setTimeout(function () { swReset(el, 'transform'); }, 260); }, 700);
+      } else {
+        pr.style.opacity = ''; pr.classList.remove('ready'); setTimeout(function () { swReset(el, 'transform'); }, 260);
+      }
+    }
+  }
 
   document.addEventListener('click', function (ev) {
     var t = ev.target;
@@ -3008,7 +3107,7 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
     });
     window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (r) { swReg = r; }).catch(function () { }); });
   }
-  window.__gym = { get state() { return state; }, E: E, sounds: sounds, socSync: socSync, get socBusy() { return socBusy; }, get clockOn() { return !!clock; } }; // útil para pruebas
+  window.__gym = { get state() { return state; }, E: E, sounds: sounds, socSync: socSync, get sw() { return sw; }, canPull: function () { return canPull(); }, get socBusy() { return socBusy; }, get clockOn() { return !!clock; } }; // útil para pruebas
 })();
 
 </script>
