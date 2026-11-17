@@ -23,7 +23,7 @@ try:
         pg.evaluate("""() => { const s = JSON.parse(localStorage.getItem('gymapp.v1')); delete s.activities; delete s.settings.actFatigue; localStorage.setItem('gymapp.v1', JSON.stringify(s)); }""")
         pg.reload(); pg.wait_for_selector('.routine')
         check(pg.evaluate('Array.isArray(window.__gym.state.activities) && window.__gym.state.settings.actFatigue === true'), 'Migra datos de la v1.1')
-        check(pg.locator('.tab').count() == 5, '5 pestañas')
+        check(pg.locator('.tab').count() == 6, '6 pestañas')
 
         # --- Calendario: marcar fútbol hoy
         pg.click('[data-t=cal]'); pg.wait_for_selector('.cal-grid')

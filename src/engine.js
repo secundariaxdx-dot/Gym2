@@ -181,14 +181,34 @@
     futbol: { label: 'Fútbol', icon: '⚽', restH: 36, parts: [['Cuádriceps', 3], ['Isquios', 3], ['Gemelos', 3], ['Glúteos', 2]] },
     correr: { label: 'Correr', icon: '👟', restH: 24, parts: [['Cuádriceps', 2], ['Gemelos', 2], ['Isquios', 1]] }
   };
+  /* Clases dirigidas: cuentan en la fatiga de piernas según el tipo (spinning como correr; yoga/estiramientos nada).
+     `fields` son datos propios opcionales que la app pide además de los comunes. */
+  var CLASSES = {
+    Spinning:   { icon: '🚴', restH: 24, parts: [['Cuádriceps', 3], ['Gemelos', 2], ['Glúteos', 1]], fields: [['dist', 'Distancia (km)', 'decimal']] },
+    CrossFit:   { icon: '🏋️', restH: 20, parts: [['Cuádriceps', 2], ['Glúteos', 2], ['Isquios', 1]] },
+    HIIT:       { icon: '🔥', restH: 18, parts: [['Cuádriceps', 2], ['Gemelos', 1]] },
+    'Body Pump':{ icon: '🏋️', restH: 12, parts: [['Cuádriceps', 1], ['Glúteos', 1]] },
+    Zumba:      { icon: '💃', restH: 12, parts: [['Cuádriceps', 1], ['Gemelos', 1]] },
+    Boxeo:      { icon: '🥊', restH: 10, parts: [['Gemelos', 1]], fields: [['rounds', 'Asaltos', 'numeric']] },
+    Pilates:    { icon: '🧘', restH: 6,  parts: [['Cuádriceps', 1]] },
+    Yoga:       { icon: '🧘', restH: 0,  parts: [] },
+    Stretching: { icon: '🤸', restH: 0,  parts: [] },
+    Otra:       { icon: '🏃', restH: 6,  parts: [['Cuádriceps', 1]] }
+  };
+  function classDef(kind) { return CLASSES[kind] || CLASSES.Otra; }
   function activitiesAsSessions(acts) {
-    return (acts || []).filter(function (a) { return ACT[a.type]; }).map(function (a) {
-      var d = ACT[a.type];
-      return { t: a.t, activity: a.type, exercises: d.parts.map(function (p) {
+    var out = [];
+    (acts || []).forEach(function (a) {
+      var parts = null, restH = 0, type = a.type;
+      if (ACT[a.type]) { parts = ACT[a.type].parts; restH = ACT[a.type].restH; }
+      else if (a.type === 'clase') { var d = classDef(a.classKind || a.kind); parts = d.parts; restH = d.restH; type = 'clase'; }
+      if (!parts || !parts.length) return; // yoga/estiramientos no fatigan piernas
+      out.push({ t: a.t, activity: type, exercises: parts.map(function (p) {
         var sets = []; for (var i = 0; i < p[1]; i++) sets.push({});
-        return { muscle: p[0], sec: [], fatigue: 1, restH: d.restH, sets: sets };
-      }) };
+        return { muscle: p[0], sec: [], fatigue: 1, restH: restH, sets: sets };
+      }) });
     });
+    return out;
   }
 
   /* Análisis post-entreno por reglas. */
@@ -258,7 +278,7 @@
   var api = {
     e1rm: e1rm, repsAt: repsAt, nextTarget: nextTarget, reference: reference, planSets: planSets,
     history: history, stallInfo: stallInfo, deloadBaseline: deloadBaseline, warmups: warmups,
-    restFor: restFor, isPR: isPR, fatigueSummary: fatigueSummary, ACT: ACT, activitiesAsSessions: activitiesAsSessions, analyzeSession: analyzeSession, weeklyVolume: weeklyVolume, bestE1: bestE1, snap: snap, round1: round1
+    restFor: restFor, isPR: isPR, fatigueSummary: fatigueSummary, ACT: ACT, CLASSES: CLASSES, classDef: classDef, activitiesAsSessions: activitiesAsSessions, analyzeSession: analyzeSession, weeklyVolume: weeklyVolume, bestE1: bestE1, snap: snap, round1: round1
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Engine = api;

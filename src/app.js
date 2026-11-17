@@ -43,7 +43,7 @@
   var state = load();
   var timer = state.timer || null; // el descanso en marcha sobrevive a un reinicio de la app
   var saveT = null;
-  function save() { if (saveT) { clearTimeout(saveT); saveT = null; } state.timer = timer; try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { memoryOnly = true; } }
+  function save() { if (saveT) { clearTimeout(saveT); saveT = null; } state.timer = timer; try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { memoryOnly = true; } if (typeof socSoon === 'function') socSoon(); }
   // Al escribir: guarda cuando paras medio segundo (y siempre al salir de la app), no en cada tecla
   function saveSoon() { clearTimeout(saveT); saveT = setTimeout(function () { saveT = null; save(); }, 500); }
   document.addEventListener('visibilitychange', function () { if (document.hidden && saveT) save(); });
@@ -271,6 +271,7 @@
     prog: '<path d="M5 20v-7M12 20V5M19 20v-11"/>',
     cal: '<rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
     aj: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6"/>',
+    amigos: '<circle cx="9" cy="8.5" r="3.3"/><path d="M3 19.5c.6-3 3-4.6 6-4.6s5.4 1.6 6 4.6"/><path d="M15.5 5.6a3.3 3.3 0 0 1 0 5.8M17.5 14.9c1.9.6 3.1 2.2 3.5 4.6"/>',
     perfil: '<circle cx="12" cy="8" r="3.8"/><path d="M4.5 20c.9-3.9 4-5.6 7.5-5.6s6.6 1.7 7.5 5.6"/>'
   };
   function svg(p) { return '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + p + '</svg>'; }
@@ -278,7 +279,7 @@
   var CHECK = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 
   function renderTabs() {
-    var tabs = [['hoy', 'Hoy'], ['cal', 'Calendario'], ['ej', 'Ejercicios'], ['prog', 'Progreso'], ['perfil', 'Perfil']];
+    var tabs = [['hoy', 'Hoy'], ['amigos', 'Amigos'], ['cal', 'Calendario'], ['ej', 'Ejercicios'], ['prog', 'Progreso'], ['perfil', 'Perfil']];
     var cur = ui.tab === 'aj' ? 'perfil' : ui.tab; // Ajustes vive dentro de Perfil
     $('#tabs').innerHTML = tabs.map(function (t) {
       return '<button class="tab' + (cur === t[0] ? ' on' : '') + '" data-a="tab" data-t="' + t[0] + '">' + svg(ICON[t[0]]) + '<span>' + t[1] + '</span></button>';
@@ -381,9 +382,12 @@
   function calState() { if (!ui.cal) { var n = new Date(); ui.cal = { y: n.getFullYear(), m: n.getMonth() }; } return ui.cal; }
   function dayInfo() {
     var map = {};
-    function get(k) { return map[k] || (map[k] = { gym: [], acts: [] }); }
+    function get(k) { return map[k] || (map[k] = { gym: [], acts: [], classes: [] }); }
     state.sessions.forEach(function (s) { get(dayKey(s.t)).gym.push(s); });
-    (state.activities || []).forEach(function (a) { if (get(a.day).acts.indexOf(a.type) < 0) get(a.day).acts.push(a.type); });
+    (state.activities || []).forEach(function (a) {
+      if (a.type === 'clase') { get(a.day).classes.push(a); }
+      else if (get(a.day).acts.indexOf(a.type) < 0) get(a.day).acts.push(a.type);
+    });
     return map;
   }
   function hasAct(day, type) { return (state.activities || []).some(function (a) { return a.day === day && a.type === type; }); }
@@ -404,8 +408,59 @@
     return '<div class="r-btns">' + ['futbol', 'correr'].map(function (k) {
       var on = hasAct(day, k);
       return '<button class="btn act' + (on ? ' on' : '') + '" data-a="act" data-type="' + k + '" data-d="' + day + '" aria-pressed="' + on + '">' + E.ACT[k].icon + ' ' + E.ACT[k].label + (on ? ' ✓' : '') + '</button>';
-    }).join('') + '</div>';
+    }).join('') + '</div><button class="btn wide" data-a="class-add" data-d="' + day + '">🤸 Apuntar clase dirigida</button>';
   }
+  /* ---------- clases dirigidas ---------- */
+  function classActs() { return (state.activities || []).filter(function (a) { return a.type === 'clase'; }); }
+  function classById(id) { var r = null; (state.activities || []).forEach(function (a) { if (a.id === id) r = a; }); return r; }
+  function classIcon(k) { return E.classDef(k).icon; }
+  // datos opcionales comunes + los propios del tipo (p. ej. distancia en spinning)
+  function classFields(kind) {
+    var base = [['min', 'Duración (min)', 'numeric', true], ['rpe', 'Intensidad percibida (1–10)', 'numeric'], ['kcal', 'Calorías', 'numeric'], ['hrAvg', 'Pulso medio (ppm)', 'numeric'], ['hrMax', 'Pulso máximo (ppm)', 'numeric']];
+    (E.classDef(kind).fields || []).forEach(function (f) { base.push([f[0], f[1], f[2]]); });
+    return base;
+  }
+  function classStats(a) {
+    var out = [];
+    if (a.rpe) out.push(['Intensidad', a.rpe + '/10']);
+    if (a.dist) out.push(['Distancia', fmt(a.dist) + ' km']);
+    if (a.rounds) out.push(['Asaltos', a.rounds]);
+    if (a.kcal) out.push(['Calorías', a.kcal + ' kcal']);
+    if (a.hrAvg) out.push(['Pulso medio', a.hrAvg + ' ppm']);
+    if (a.hrMax) out.push(['Pulso máx.', a.hrMax + ' ppm']);
+    return out;
+  }
+  function classModalHtml(m) {
+    var a = m.edit ? classById(m.id) || {} : {}, kind = m.kind || a.classKind || 'Spinning';
+    var opts = Object.keys(E.CLASSES).map(function (k) { return '<option value="' + esc(k) + '"' + (k === kind ? ' selected' : '') + '>' + classIcon(k) + ' ' + esc(k === 'Otra' ? 'Otra…' : k) + '</option>'; }).join('');
+    var h = '<h2>' + (m.edit ? 'Editar clase' : 'Clase dirigida') + '</h2>' +
+      '<label>Tipo<select id="c-kind" data-f="c-kind">' + opts + '</select></label>' +
+      (kind === 'Otra' ? '<label>Nombre de la clase<input id="c-other" maxlength="24" value="' + esc(a.other || '') + '" placeholder="Ej.: TRX"></label>' : '') +
+      '<div class="muted small" style="margin-top:12px">Duración obligatoria; lo demás, si lo sabes.</div>';
+    classFields(kind).forEach(function (f) {
+      h += '<label>' + esc(f[1]) + '<input id="c-' + f[0] + '" inputmode="' + f[2] + '" autocomplete="off" value="' + esc(a[f[0]] != null ? a[f[0]] : '') + '"></label>';
+    });
+    h += '<label>Notas<textarea id="c-notes" class="ta" rows="2" placeholder="Opcional">' + esc(a.notes || '') + '</textarea></label><p class="err" id="c-err" hidden></p>';
+    h += '<div class="r-btns"><button class="btn" data-a="close">Cancelar</button><button class="btn primary" data-a="class-save">' + (m.edit ? 'Guardar' : 'Apuntar') + '</button></div>';
+    if (m.edit) h += '<button class="link danger" data-a="class-del" data-id="' + esc(m.id) + '">Borrar esta clase</button>';
+    return h;
+  }
+  function saveClass() {
+    var m = ui.modal, kind = $('#c-kind').value, num2 = function (id) { var e2 = $('#c-' + id); if (!e2) return undefined; var v = (e2.value || '').trim(); return v === '' ? undefined : num(v); };
+    var min = num2('min');
+    if (!(min > 0)) { var er = $('#c-err'); er.textContent = 'Pon la duración en minutos.'; er.hidden = false; return; }
+    var a = m.edit ? classById(m.id) : { id: 'c' + uid(), type: 'clase' };
+    if (!a) { closeModal(); return; }
+    var p = m.day.split('-').map(Number);
+    a.day = m.day; a.classKind = kind; a.min = min;
+    a.t = m.day === dayKey(Date.now()) ? Date.now() : new Date(p[0], p[1] - 1, p[2], 19, 0).getTime();
+    ['rpe', 'kcal', 'hrAvg', 'hrMax', 'dist', 'rounds'].forEach(function (k) { var v = num2(k); if (v != null && !isNaN(v)) a[k] = v; else delete a[k]; });
+    var other = $('#c-other'); a.other = kind === 'Otra' && other ? (other.value || '').trim() : undefined;
+    var notes = ($('#c-notes').value || '').trim(); if (notes) a.notes = notes; else delete a.notes;
+    if (!m.edit) { state.activities = state.activities || []; state.activities.push(a); }
+    save(); closeModal(); render(); toast(classIcon(kind) + ' Clase apuntada');
+  }
+  function classTitle(a) { return a.classKind === 'Otra' && a.other ? a.other : a.classKind; }
   function viewCal() {
     var c = calState(), info = dayInfo(), today = dayKey(Date.now());
     var first = new Date(c.y, c.m, 1), days = new Date(c.y, c.m + 1, 0).getDate();
@@ -416,7 +471,7 @@
     h += '<div class="cal-nav"><button class="btn sm" data-a="cal-prev" aria-label="Mes anterior">‹</button><h2 class="cap">' + esc(first.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })) + '</h2><button class="btn sm" data-a="cal-next" aria-label="Mes siguiente"' + (isCur ? ' disabled' : '') + '>›</button></div>';
     h += '<div class="cal-grid">' + ['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(function (d) { return '<div class="cal-wd">' + d + '</div>'; }).join('');
     for (var b = 0; b < lead; b++) h += '<div class="cal-d blank"></div>';
-    var nGym = 0, nF = 0, nC = 0;
+    var nGym = 0, nF = 0, nC = 0, nCl = 0;
     for (var d = 1; d <= days; d++) {
       var k = c.y + '-' + two(c.m + 1) + '-' + two(d), di = info[k], fut = k > today;
       var ic = '';
@@ -424,12 +479,13 @@
         if (di.gym.length) { ic += '<span class="ic-gym">' + MINI_DB + '</span>'; nGym++; }
         if (di.acts.indexOf('futbol') >= 0) { ic += '<span>⚽</span>'; nF++; }
         if (di.acts.indexOf('correr') >= 0) { ic += '<span>👟</span>'; nC++; }
+        if (di.classes.length) { ic += '<span>' + classIcon(di.classes[0].classKind) + '</span>'; nCl += di.classes.length; }
       }
       h += '<button class="cal-d' + (di && di.gym.length ? ' gym' : '') + (k === today ? ' today' : '') + (fut ? ' fut' : '') + '"' + (fut ? ' disabled' : ' data-a="day" data-d="' + k + '"') + '><span class="dn">' + d + '</span><span class="ic">' + ic + '</span></button>';
     }
     h += '</div>';
-    h += '<div class="cal-sum"><span><span class="ic-gym">' + MINI_DB + '</span> ' + nGym + (nGym === 1 ? ' día' : ' días') + ' de gimnasio</span><span>⚽ ' + nF + '</span><span>👟 ' + nC + '</span></div>';
-    h += '<div class="muted small pad0">Toca un día para ver el entreno o anotar fútbol o correr.</div>';
+    h += '<div class="cal-sum"><span><span class="ic-gym">' + MINI_DB + '</span> ' + nGym + (nGym === 1 ? ' día' : ' días') + ' de gimnasio</span><span>⚽ ' + nF + '</span><span>👟 ' + nC + '</span>' + (nCl ? '<span>🤸 ' + nCl + '</span>' : '') + '</div>';
+    h += '<div class="muted small pad0">Toca un día para ver lo que hiciste o apuntar fútbol, correr o una clase.</div>';
     return h;
   }
 
@@ -937,6 +993,7 @@
   function mediaHtml(x, inDetail) {
     var ph = x.photos || [], n = ph.length + 1;
     var h = '<div class="media" data-n="' + n + '">' + ph.map(function (id) {
+      if (x.remote) { var rk = x.remote + '/' + id; return '<div class="slide ph"><img data-rph="' + esc(rk) + '"' + (rurl[rk] ? ' src="' + rurl[rk] + '"' : '') + ' alt="Foto del entreno" loading="lazy"></div>'; }
       return '<div class="slide ph"><img data-ph="' + esc(id) + '"' + (purl[id] ? ' src="' + purl[id] + '"' : '') + (inDetail ? ' data-a="photo" data-id="' + esc(id) + '" data-sid="' + esc(x.id) + '"' : '') + ' alt="Foto del entreno" loading="lazy"></div>';
     }).join('') +
       '<div class="slide fig"><div class="fig-t">Músculos trabajados</div>' + bodyMap(x) + '<div class="fig-l"><span>Frontal</span><span class="fig-sc">menos<i></i><i></i><i></i>más</span><span>Posterior</span></div></div></div>';
@@ -951,6 +1008,151 @@
     Array.prototype.forEach.call(dots.children, function (d, i) { d.classList.toggle('on', i === k); });
   }
   document.addEventListener('scroll', function (ev) { var t = ev.target; if (t && t.classList && t.classList.contains('media')) syncDots(t); }, true);
+
+  /* ---------- social: grupo privado con cifrado de extremo a extremo ----------
+     Los entrenos y fotos se cifran en el móvil (AES-GCM) con una clave que solo tiene el grupo (el «código»).
+     El servidor solo guarda texto ilegible, los nombres de usuario y a quién sigue cada uno. */
+  function soc() { return state.settings.social && state.settings.social.token ? state.settings.social : null; }
+  function b64u(u8) { var s = '', CH = 0x8000; for (var i = 0; i < u8.length; i += CH) s += String.fromCharCode.apply(null, u8.subarray(i, i + CH)); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+  function unb64u(str) { var b = atob(str.replace(/-/g, '+').replace(/_/g, '/')), a = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; }
+  var CODE_RE = /GYM1-[A-Za-z0-9_-]{43}/;
+  function newCode() { var a = new Uint8Array(32); crypto.getRandomValues(a); return 'GYM1-' + b64u(a); }
+  var socKeyMemo = {};
+  function socKeys(code) {
+    if (socKeyMemo[code]) return socKeyMemo[code];
+    var te = new TextEncoder(), raw = unb64u(code.slice(5));
+    socKeyMemo[code] = crypto.subtle.importKey('raw', raw, 'HKDF', false, ['deriveKey', 'deriveBits']).then(function (base) {
+      var hk = function (info) { return { name: 'HKDF', hash: 'SHA-256', salt: te.encode('gym-v1'), info: te.encode(info) }; };
+      return Promise.all([
+        crypto.subtle.deriveKey(hk('gym-data'), base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']),
+        crypto.subtle.deriveBits(hk('gym-join'), base, 256)
+      ]).then(function (r) { return { enc: r[0], proof: b64u(new Uint8Array(r[1])) }; });
+    });
+    return socKeyMemo[code];
+  }
+  function encBytes(u8) {
+    return socKeys(soc().code).then(function (k) {
+      var iv = new Uint8Array(12); crypto.getRandomValues(iv);
+      return crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, k.enc, u8).then(function (ct) { var o = new Uint8Array(12 + ct.byteLength); o.set(iv); o.set(new Uint8Array(ct), 12); return b64u(o); });
+    });
+  }
+  function decBytes(str) {
+    return socKeys(soc().code).then(function (k) { var a = unb64u(str); return crypto.subtle.decrypt({ name: 'AES-GCM', iv: a.subarray(0, 12) }, k.enc, a.subarray(12)); }).then(function (b) { return new Uint8Array(b); });
+  }
+  function encJSON(o) { return encBytes(new TextEncoder().encode(JSON.stringify(o))); }
+  function decJSON(str) { return decBytes(str).then(function (u8) { return JSON.parse(new TextDecoder().decode(u8)); }); }
+  function socCall(path, body, noAuth) {
+    body = body || {}; if (!noAuth) body.token = soc().token;
+    return fetch(PUSH.url + '/s/' + path, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) { var e = new Error(j.error || 'http'); e.status = r.status; throw e; } return j; }); });
+  }
+  function hashStr(str) { var h = 0x811c9dc5; for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16); }
+  function socPayload(x) {
+    if (x.type === 'clase') {
+      var o = { ckind: 'c', classKind: x.classKind, other: x.other, min: x.min, t: x.t };
+      ['rpe', 'kcal', 'hrAvg', 'hrMax', 'dist', 'rounds', 'notes'].forEach(function (k) { if (x[k] != null) o[k] = x[k]; });
+      return o;
+    }
+    return { name: x.name, t: x.t, t0: x.t0, photos: x.photos || [],
+      exercises: x.exercises.map(function (e) { return { exId: e.exId, name: e.name, muscle: e.muscle, sec: e.sec || [], sets: e.sets.map(function (st) { return { w: st.w, r: st.r }; }) }; }),
+      prs: (x.prs || []).map(function (p) { return { exId: p.exId, name: p.name, w: p.w, r: p.r }; }) };
+  }
+  // elementos compartibles: entrenos + clases dirigidas
+  function shareItems() { return state.sessions.filter(function (x) { return !x.activity; }).concat(classActs()); }
+  // Sube lo que falta, actualiza lo cambiado y borra lo que ya no está (entrenos y fotos)
+  var socBusy = false, socAgain = false, socT = null, socLastSig = '';
+  function socSig() { return shareItems().map(function (x) { return x.id + ':' + (x.type === 'clase' ? hashStr(JSON.stringify(socPayload(x))) : x.exercises.length + ':' + (x.photos || []).join(',')); }).join('|'); }
+  function socSoon() { if (!soc()) return; clearTimeout(socT); socT = setTimeout(function () { socSync(false); }, 1200); }
+  function socSync(force) {
+    if (!soc() || !PUSH.url) return Promise.resolve();
+    if (socBusy) { socAgain = true; return Promise.resolve(); }
+    var sig = socSig(); if (!force && sig === socLastSig) return Promise.resolve();
+    socBusy = true;
+    return socCall('index').then(function (ix) {
+      var have = {}, hp = {}, lp = {}, first = [], posts = [], dels = [];
+      ix.posts.forEach(function (p) { have[p.id] = p.v; }); ix.photos.forEach(function (id) { hp[id] = 1; });
+      shareItems().forEach(function (x) {
+        var pl = socPayload(x), v = hashStr(JSON.stringify(pl)), phs = pl.photos || [];
+        phs.forEach(function (id) { lp[id] = 1; });
+        if (have[x.id] !== v) posts.push(function () { return encJSON(pl).then(function (d) { return socCall('post', { id: x.id, t: x.t, v: v, data: d, photos: phs }); }); });
+        delete have[x.id];
+      });
+      Object.keys(lp).forEach(function (id) {
+        if (!hp[id]) first.push(function () { return photoGet(id).then(function (rec) { if (rec) return encBytes(new Uint8Array(rec.buf)).then(function (d) { return socCall('photo-put', { id: id, data: d }); }); }); });
+        delete hp[id];
+      });
+      Object.keys(have).forEach(function (id) { dels.push(function () { return socCall('del', { id: id }); }); });
+      Object.keys(hp).forEach(function (id) { dels.push(function () { return socCall('photo-del', { id: id }); }); });
+      // primero las fotos, luego los entrenos que las nombran, al final lo que sobra
+      return first.concat(posts, dels).reduce(function (pr, job) { return pr.then(job); }, Promise.resolve());
+    }).then(function () { socLastSig = sig; ui.socErr = ''; }, function (e) {
+      ui.socErr = e && e.status === 401 ? 'auth' : 'net';
+      if (e && e.status === 401) { state.settings.social = null; save(); render(); toast('Tu cuenta del grupo ya no existe'); }
+    }).then(function () { socBusy = false; if (socAgain) { socAgain = false; socSoon(); } });
+  }
+
+  /* ---------- social: datos de los demás (siempre descifrados en el móvil) ---------- */
+  var rc = { feed: null, feedT: 0, users: null, usersT: 0, me: null, lists: {}, rels: {}, loading: {} };
+  function decPost(p) { return decJSON(p.data).then(function (o) { o.id = p.id; o.uid = p.uid; o.t = p.t; o.remote = p.uid; o.photos = p.photos || o.photos || []; return o; }, function () { return null; }); }
+  // nota: una clase descifrada tiene o.classKind (ckind 'c'); isClass() la distingue
+  function decPosts(ps) { return Promise.all(ps.map(decPost)).then(function (a) { return a.filter(Boolean); }); }
+  function rcLoad(key, fn) {
+    if (rc.loading[key]) return; rc.loading[key] = 1;
+    fn().then(function () { ui.socErr = ''; }, function (e) { ui.socErr = e && e.status === 401 ? 'auth' : 'net'; }).then(function () { delete rc.loading[key]; if (ui.tab === 'amigos' || ui.tab === 'perfil') render(); });
+  }
+  function loadFeed(more) {
+    rcLoad('feed', function () {
+      var before = more && rc.feed && rc.feed.posts.length ? rc.feed.posts[rc.feed.posts.length - 1].t : 0;
+      return socCall('feed', { before: before || undefined, limit: 20 }).then(function (j) {
+        return decPosts(j.posts).then(function (ps) {
+          var users = Object.assign({}, more && rc.feed ? rc.feed.users : {}, j.users);
+          rc.feed = { posts: (more && rc.feed ? rc.feed.posts : []).concat(ps), users: users, more: j.posts.length === 20 }; rc.feedT = Date.now();
+        });
+      });
+    });
+  }
+  function loadUsers() { rcLoad('users', function () { return Promise.all([socCall('users'), socCall('me')]).then(function (r) { rc.users = r[0].users; rc.me = r[1]; rc.usersT = Date.now(); }); }); }
+  function loadWho(uid) {
+    rcLoad('who' + uid, function () {
+      return socCall('profile', { uid: uid }).then(function (pr) {
+        if (!pr.canSee) { rc.lists[uid] = { prof: pr, posts: [], t: Date.now() }; return; }
+        return socCall('list', { uid: uid }).then(function (j) { return decPosts(j.posts); }).then(function (ps) { rc.lists[uid] = { prof: pr, posts: ps, t: Date.now() }; });
+      });
+    });
+  }
+  function stale(t, ms) { return !t || Date.now() - t > (ms || 30000); }
+  // Fotos de los demás: se descargan cifradas, se descifran aquí y se guardan unos días en el móvil
+  var rurl = {};
+  function hydrateRemote() {
+    if (!soc()) return;
+    document.querySelectorAll('img[data-rph]:not([src])').forEach(function (im) {
+      var k = im.getAttribute('data-rph');
+      if (rurl[k]) { im.src = rurl[k]; return; }
+      if (rurl[k] === 0) return; rurl[k] = 0;
+      var parts = k.split('/'), ck = 'r:' + parts[0] + ':' + parts[1];
+      photoGet(ck).then(function (rec) {
+        if (rec) return new Blob([rec.buf], { type: rec.type || 'image/jpeg' });
+        return socCall('photo', { uid: parts[0], id: parts[1] }).then(function (j) { return decBytes(j.data); }).then(function (u8) {
+          var bl = new Blob([u8], { type: 'image/jpeg' }); return photoPut(ck, bl).catch(noop).then(function () { return bl; });
+        });
+      }).then(function (bl) {
+        rurl[k] = URL.createObjectURL(bl);
+        document.querySelectorAll('img[data-rph="' + k + '"]').forEach(function (i2) { i2.src = rurl[k]; });
+      }).catch(function () {
+        delete rurl[k];
+        document.querySelectorAll('img[data-rph="' + k + '"]').forEach(function (i2) { var sl = i2.closest('.slide'), md = sl && sl.parentNode; if (sl) sl.remove(); if (md) syncDots(md); });
+      });
+    });
+  }
+  function initials(n) { return String(n || '?').trim().split(/\s+/).slice(0, 2).map(function (w) { return w.charAt(0).toUpperCase(); }).join('') || '?'; }
+  function avatar(u, big) { return '<span class="av' + (big ? ' big' : '') + '" aria-hidden="true">' + esc(initials(u && u.name)) + '</span>'; }
+  function relTime(t) {
+    var m = (Date.now() - t) / 60000;
+    if (m < 60) return 'hace ' + Math.max(1, Math.round(m)) + ' min';
+    if (m < 24 * 60) return 'hace ' + Math.round(m / 60) + ' h';
+    if (m < 7 * 24 * 60) { var d = Math.round(m / 1440); return d === 1 ? 'ayer' : 'hace ' + d + ' días'; }
+    return fmtDate(t);
+  }
 
   /* ---------- perfil: resumen y registro de entrenos ---------- */
   function sessStats(x) {
@@ -981,19 +1183,37 @@
   function viewPerfil() {
     var ss = state.sessions.filter(function (x) { return !x.activity; }).sort(function (a, b) { return b.t - a.t; });
     if (ui.sessOpen) { var so = sessById(ui.sessOpen); if (so) return viewSess(so); ui.sessOpen = null; }
-    var tot = { min: 0, vol: 0, sets: 0, prs: 0 };
-    ss.forEach(function (x) { var st = sessStats(x); tot.min += st.min; tot.vol += st.vol; tot.sets += st.sets; tot.prs += st.prs; });
-    var first = ss.length ? ss[ss.length - 1].t : 0, streak = weekStreak(ss);
-    var h = '<header class="top"><div><h1>Perfil</h1><div class="sub">' + (ss.length ? ss.length + (ss.length === 1 ? ' entreno' : ' entrenos') + ' desde ' + new Date(first).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }) : 'Tu registro de entrenos') + '</div></div>' +
+    var me = soc(), mc = me && rc.me && rc.me.counts;
+    var h = '<header class="top"><div><h1>Perfil</h1><div class="sub">' + (ss.length ? ss.length + (ss.length === 1 ? ' entreno' : ' entrenos') + ' desde ' + new Date(ss[ss.length - 1].t).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }) : 'Tu registro de entrenos') + '</div></div>' +
       '<button class="btn sm ic-btn" data-a="tab" data-t="aj" aria-label="Ajustes">' + svg(ICON.aj) + '</button></header>';
+    if (me) {
+      if (!rc.me || stale(rc.usersT, 60000)) loadUsers();
+      var nR = (rc.me && rc.me.requests) ? rc.me.requests.length : 0;
+      h += '<div class="card me-card"><button class="by me-by" data-a="who" data-u="' + esc(me.uid) + '">' + avatar(me, true) + '<span class="me-t"><b>' + esc(me.name) + '</b><span class="muted small">@' + esc(me.username) + '</span></span></button>' +
+        '<span class="me-n"><button class="me-b" data-a="rel-list" data-u="' + esc(me.uid) + '" data-k="followers"><b>' + (mc ? mc.followers : '–') + '</b>seguidores</button><button class="me-b" data-a="rel-list" data-u="' + esc(me.uid) + '" data-k="following"><b>' + (mc ? mc.following : '–') + '</b>siguiendo</button></span></div>' +
+        (nR ? '<button class="banner" data-a="people"><div><b>' + nR + (nR === 1 ? ' solicitud de seguimiento' : ' solicitudes de seguimiento') + '</b></div><span class="chip ok">Ver</span></button>' : '');
+    }
+    return h + perfilBody(ss.concat(classActs()), function (x) { return 'data-a="sess" data-id="' + esc(x.id) + '"'; }, 'Aquí aparecerán tus entrenos cuando guardes el primero.', true);
+  }
+  // Resumen, gráfico de 12 semanas y registro: el mío o el de una persona a la que sigo
+  function isClass(x) { return !!x.classKind; }
+  function perfilBody(items, cardAttr, emptyMsg, mine) {
+    items = items.slice().sort(function (a, b) { return b.t - a.t; });
+    var ss = items.filter(function (x) { return !isClass(x); }), cl = items.filter(isClass);
+    var h = '', tot = { min: 0, vol: 0, sets: 0, prs: 0 };
+    ss.forEach(function (x) { var st = sessStats(x); tot.min += st.min; tot.vol += st.vol; tot.sets += st.sets; tot.prs += st.prs; });
+    cl.forEach(function (a) { tot.min += a.min || 0; });
+    var streak = weekStreak(items);
     h += '<div class="tiles">' + tile(ss.length, 'Entrenos') + tile(streak + (streak === 1 ? ' semana' : ' semanas'), 'Racha actual') +
-      tile(tot.min >= 60 ? Math.round(tot.min / 60) + ' h' : tot.min + ' min', 'Tiempo entrenando') + tile(kgText(tot.vol), 'Volumen total') + '</div>';
-    if (!ss.length) return h + '<div class="empty">Aquí aparecerán tus entrenos cuando guardes el primero.</div>';
+      tile(tot.min >= 60 ? Math.round(tot.min / 60) + ' h' : tot.min + ' min', 'Tiempo activo') + tile(kgText(tot.vol), 'Volumen total') + '</div>';
+    if (!items.length) return h + '<div class="empty">' + emptyMsg + '</div>';
     // actividad de las últimas 12 semanas
     var m = ui.pfM || 'dur', weeks = weekStarts(12, Date.now()), WK = 7 * 86400000, vals = weeks.map(function () { return 0; });
-    ss.forEach(function (x) {
+    items.forEach(function (x) {
       if (x.t < weeks[0]) return;
-      var k = Math.min(weeks.length - 1, Math.floor((x.t - weeks[0]) / WK)), st = sessStats(x);
+      var k = Math.min(weeks.length - 1, Math.floor((x.t - weeks[0]) / WK));
+      if (isClass(x)) { if (m === 'dur') vals[k] += x.min || 0; return; }
+      var st = sessStats(x);
       vals[k] += m === 'dur' ? st.min : m === 'vol' ? st.vol : st.sets;
     });
     var tipV = function (v) { return m === 'dur' ? durText(Math.round(v)) : m === 'vol' ? kgText(v) : v + ' series'; };
@@ -1002,8 +1222,8 @@
       barChart(weeks.map(function (t, i) { return { label: shortDate(t), y: m === 'dur' ? Math.round(vals[i] / 6) / 10 : Math.round(vals[i]), tip: 'sem. ' + shortDate(t) + ' · <b>' + tipV(vals[i]) + '</b>' }; })) +
       '<div class="muted small">' + (m === 'dur' ? 'Horas por semana' : m === 'vol' ? 'Kilos × repeticiones por semana' : 'Series por semana') + '</div></section>';
     // registro
-    var shown = ss.slice(0, ui.feedN || 20), lastM = '';
-    h += '<h3 class="sec">Entrenos</h3>';
+    var shown = items.slice(0, ui.feedN || 20), lastM = '';
+    h += '<h3 class="sec">' + (cl.length ? 'Actividad' : 'Entrenos') + '</h3>';
     shown.forEach(function (x) {
       var d = new Date(x.t), mk = d.getFullYear() + '-' + d.getMonth();
       if (mk !== lastM) {
@@ -1011,24 +1231,34 @@
         var nM = ss.filter(function (y) { var e = new Date(y.t); return e.getFullYear() === d.getFullYear() && e.getMonth() === d.getMonth(); }).length;
         h += '<div class="grp cap">' + esc(d.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })) + ' · ' + nM + (nM === 1 ? ' entreno' : ' entrenos') + '</div>';
       }
+      if (isClass(x)) { h += classCard(x, mine); return; }
       var st = sessStats(x), exs = x.exercises;
-      h += '<div class="card sess" role="button" tabindex="0" data-a="sess" data-id="' + esc(x.id) + '"><span class="ss-top"><span><span class="ss-name">' + esc(x.name) + '</span><span class="muted small cap">' + esc(fmtDate(x.t)) + ' · ' + hhmm(x.t0 || x.t) + '</span></span>' +
+      h += '<div class="card sess" role="button" tabindex="0" ' + cardAttr(x) + '><span class="ss-top"><span><span class="ss-name">' + esc(x.name) + '</span><span class="muted small cap">' + esc(fmtDate(x.t)) + ' · ' + hhmm(x.t0 || x.t) + '</span></span>' +
         (st.prs ? '<span class="chip ok">🏆 ' + st.prs + (st.prs === 1 ? ' récord' : ' récords') + '</span>' : '') + '</span>' +
         '<span class="ss-stats"><span><b>' + durText(st.min) + '</b>Tiempo</span><span><b>' + kgText(st.vol) + '</b>Volumen</span><span><b>' + st.sets + '</b>Series</span></span>' +
         ((x.photos || []).length ? mediaHtml(x, false) : '') +
         '<span class="ss-ex">' + exs.slice(0, 4).map(function (e) { return '<span class="ss-row"><span class="ss-e">' + e.sets.length + ' × ' + esc(e.name) + '</span><span class="ss-b">' + esc(setText(topSet(e.sets))) + '</span></span>'; }).join('') +
         (exs.length > 4 ? '<span class="muted small">+ ' + (exs.length - 4) + (exs.length - 4 === 1 ? ' ejercicio más' : ' ejercicios más') + '</span>' : '') + '</span></div>';
     });
-    if (ss.length > shown.length) h += '<button class="btn wide" data-a="pf-more">Ver más entrenos (' + (ss.length - shown.length) + ')</button>';
+    if (items.length > shown.length) h += '<button class="btn wide" data-a="pf-more">Ver más (' + (items.length - shown.length) + ')</button>';
     return h;
   }
+  function classCard(a, mine) {
+    var stats = classStats(a);
+    var attr = mine && !a.remote ? ' role="button" tabindex="0" data-a="class-edit" data-id="' + esc(a.id) + '"' : '';
+    return '<div class="card clz"' + attr + '><span class="clz-top"><span class="clz-ic">' + classIcon(a.classKind) + '</span><span class="clz-t"><b>' + esc(classTitle(a)) + '</b><span class="muted small cap">Clase dirigida · ' + esc(fmtDate(a.t)) + '</span></span><span class="clz-min">' + (a.min || 0) + ' min</span></span>' +
+      (stats.length ? '<span class="clz-stats">' + stats.map(function (p) { return '<span><b>' + esc(String(p[1])) + '</b>' + esc(p[0]) + '</span>'; }).join('') + '</span>' : '') +
+      (a.notes ? '<span class="clz-notes">' + esc(a.notes) + '</span>' : '') + '</div>';
+  }
   // Detalle de un entreno guardado: todas las series, récords y comparación con la vez anterior
-  function viewSess(x) {
-    var st = sessStats(x), d = new Date(x.t0 || x.t);
-    var h = '<header class="top"><div><button class="back" data-a="sess-back">‹ Entrenos</button><h1>' + esc(x.name) + '</h1><div class="sub cap">' + esc(d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })) +
+  function viewSess(x, pool, who) {
+    var st = sessStats(x), d = new Date(x.t0 || x.t), mine = !x.remote;
+    pool = pool || state.sessions;
+    var h = '<header class="top"><div><button class="back" data-a="' + (mine ? 'sess-back' : 'rsess-back') + '">‹ ' + (mine ? 'Entrenos' : esc(ui.rsessFrom === 'who' && who ? who.name : 'Amigos')) + '</button>' +
+      (who ? '<button class="by" data-a="who" data-u="' + esc(x.uid) + '">' + avatar(who) + '<span>' + esc(who.name) + '</span></button>' : '') + '<h1>' + esc(x.name) + '</h1><div class="sub cap">' + esc(d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })) +
       ' · ' + (x.t0 && st.min ? hhmm(x.t0) + '–' + hhmm(x.t) : hhmm(x.t)) + '</div></div></header>';
     h += '<div class="tiles">' + tile(durText(st.min), 'Duración') + tile(kgText(st.vol), 'Volumen') + tile(st.sets, 'Series') + tile(st.prs ? '🏆 ' + st.prs : '0', st.prs === 1 ? 'Récord' : 'Récords') + '</div>';
-    h += mediaHtml(x, true) + ((x.photos || []).length < PH_MAX ? photoBtn(x.id, 'wide') : '');
+    h += mediaHtml(x, mine) + (mine && (x.photos || []).length < PH_MAX ? photoBtn(x.id, 'wide') : '');
     var mus = {}, order = [];
     x.exercises.forEach(function (e) { if (!e.muscle) return; if (!mus[e.muscle]) { mus[e.muscle] = 0; order.push(e.muscle); } mus[e.muscle] += e.sets.length; });
     if (order.length) h += '<div class="chips ss-mus">' + order.map(function (k) { return '<span class="chip">' + esc(k) + ' · ' + mus[k] + '</span>'; }).join('') + '</div>';
@@ -1036,8 +1266,8 @@
     x.exercises.forEach(function (e) {
       var pr = null; (x.prs || []).forEach(function (p) { if (p.exId === e.exId) pr = p; });
       // mejor marca de la vez anterior (otra sesión o los datos iniciales)
-      var ex = exById(e.exId), prev = 0, prevT = 0;
-      state.sessions.forEach(function (y) { if (y.t < x.t) y.exercises.forEach(function (ye) { if (ye.exId === e.exId && y.t > prevT) { prevT = y.t; prev = E.bestE1(ye.sets); } }); });
+      var ex = mine ? exById(e.exId) : null, prev = 0, prevT = 0;
+      pool.forEach(function (y) { if (y.t < x.t) y.exercises.forEach(function (ye) { if (ye.exId === e.exId && y.t > prevT) { prevT = y.t; prev = E.bestE1(ye.sets); } }); });
       if (!prevT && ex && ex.baseline && ex.baseline.sets && ex.baseline.t < x.t) { prevT = ex.baseline.t; prev = E.bestE1(ex.baseline.sets); }
       var cur = E.bestE1(e.sets), chip = '';
       if (!prevT) chip = '<span class="chip">Primera vez</span>';
@@ -1051,11 +1281,136 @@
       h += '<section class="card pad sd"><div class="li-row"><div><div class="ex-name">' + esc(e.name) + '</div><div class="muted small">' + esc(e.muscle || '') + (vol ? ' · ' + kgText(vol) : '') + '</div></div>' + chip + '</div>' +
         '<div class="sd-head"><span>Serie</span><span>Peso × reps</span><span>1RM est.</span></div>' + rows + '</section>';
     });
+    if (!mine) return h;
     h += analysisHtml(x, false);
     h += '<button class="link danger" data-a="del-sess" data-id="' + esc(x.id) + '">Borrar este entreno</button>';
     return h;
   }
 
+  var PEOPLE_IC = '<path d="M16 19.5c-.6-2.9-2.9-4.4-5.5-4.4S5.6 16.6 5 19.5"/><circle cx="10.5" cy="8.5" r="3.4"/><path d="M19 8v6M16 11h6"/>';
+  function feedCard(x, u) {
+    var st = sessStats(x), exs = x.exercises;
+    return '<div class="card sess fd" role="button" tabindex="0" data-a="rsess" data-u="' + esc(x.uid) + '" data-id="' + esc(x.id) + '" data-from="feed">' +
+      '<span class="fd-by"><button class="by" data-a="who" data-u="' + esc(x.uid) + '">' + avatar(u) + '<span class="by-t"><b>' + esc(u ? u.name : '¿?') + '</b><span class="muted small">' + esc(relTime(x.t)) + '</span></span></button></span>' +
+      '<span class="ss-top"><span><span class="ss-name">' + esc(x.name) + '</span><span class="muted small cap">' + esc(fmtDate(x.t)) + ' · ' + hhmm(x.t0 || x.t) + '</span></span>' +
+      (st.prs ? '<span class="chip ok">🏆 ' + st.prs + (st.prs === 1 ? ' récord' : ' récords') + '</span>' : '') + '</span>' +
+      '<span class="ss-stats"><span><b>' + durText(st.min) + '</b>Tiempo</span><span><b>' + kgText(st.vol) + '</b>Volumen</span><span><b>' + st.sets + '</b>Series</span></span>' +
+      mediaHtml(x, false) +
+      '<span class="ss-ex">' + exs.slice(0, 4).map(function (e) { return '<span class="ss-row"><span class="ss-e">' + e.sets.length + ' × ' + esc(e.name) + '</span><span class="ss-b">' + esc(setText(topSet(e.sets))) + '</span></span>'; }).join('') +
+      (exs.length > 4 ? '<span class="muted small">+ ' + (exs.length - 4) + (exs.length - 4 === 1 ? ' ejercicio más' : ' ejercicios más') + '</span>' : '') + '</span></div>';
+  }
+  function feedClassCard(x, u) {
+    return '<div class="card clz"><span class="fd-by"><button class="by" data-a="who" data-u="' + esc(x.uid) + '">' + avatar(u) + '<span class="by-t"><b>' + esc(u ? u.name : '¿?') + '</b><span class="muted small">' + esc(relTime(x.t)) + '</span></span></button></span>' +
+      '<span class="clz-top"><span class="clz-ic">' + classIcon(x.classKind) + '</span><span class="clz-t"><b>' + esc(classTitle(x)) + '</b><span class="muted small">Clase dirigida · ' + esc(fmtDate(x.t)) + '</span></span><span class="clz-min">' + (x.min || 0) + ' min</span></span>' +
+      (classStats(x).length ? '<span class="clz-stats">' + classStats(x).map(function (p) { return '<span><b>' + esc(String(p[1])) + '</b>' + esc(p[0]) + '</span>'; }).join('') + '</span>' : '') +
+      (x.notes ? '<span class="clz-notes">' + esc(x.notes) + '</span>' : '') + '</div>';
+  }
+  function netNote() { return ui.socErr === 'net' ? '<div class="banner warn">Sin conexión con el grupo. Se reintentará al volver a internet.</div>' : ''; }
+  function viewAmigos() {
+    var me = soc();
+    if (!me) {
+      return '<header class="top"><div><h1>Amigos</h1><div class="sub">Entrena con tu gente</div></div></header>' +
+        '<section class="card pad soc-hero"><div class="soc-ic">' + svg(PEOPLE_IC) + '</div><h2>Sigue los entrenos de tus amigos</h2>' +
+        '<p class="muted small">Crea un grupo privado y pásales el código. Veréis los entrenos, fotos y récords de las personas que sigáis. Todo va cifrado: solo vosotros podéis verlo.</p>' +
+        '<div class="r-btns"><button class="btn primary" data-a="soc-start" data-m="create">Crear grupo</button><button class="btn" data-a="soc-start" data-m="join">Tengo un código</button></div></section>';
+    }
+    if (ui.rel) return viewRel(ui.relU, ui.rel);
+    if (ui.people) return viewPeople();
+    if (ui.rsess) {
+      var src = ui.rsessFrom === 'who' ? (rc.lists[ui.rsessU] || {}).posts : rc.feed && rc.feed.posts;
+      var x = (src || []).filter(function (p) { return p.uid === ui.rsessU && p.id === ui.rsess; })[0];
+      if (x) {
+        var who = ui.rsessFrom === 'who' ? (rc.lists[ui.rsessU] || {}).prof.user : rc.feed.users[x.uid];
+        return viewSess(x, src.filter(function (p) { return p.uid === x.uid; }), who);
+      }
+      ui.rsess = null;
+    }
+    if (ui.who) return viewWho(ui.who);
+    if (!rc.feed || stale(rc.feedT)) loadFeed(false);
+    if (!rc.me || stale(rc.usersT, 60000)) loadUsers();
+    var nReq = (rc.me && rc.me.requests) ? rc.me.requests.length : 0;
+    var h = '<header class="top"><div><h1>Amigos</h1><div class="sub">Entrenos de la gente que sigues</div></div><button class="btn sm ic-btn rel" data-a="people" aria-label="Personas">' + svg(PEOPLE_IC) + (nReq ? '<span class="badge">' + nReq + '</span>' : '') + '</button></header>' + netNote();
+    if (nReq) h += '<button class="banner" data-a="people"><div><b>' + nReq + (nReq === 1 ? ' solicitud' : ' solicitudes') + ' de seguimiento</b></div><span class="chip ok">Ver</span></button>';
+    if (!rc.feed) return h + '<div class="empty">Cargando…</div>';
+    if (!rc.feed.posts.length) {
+      return h + '<section class="card pad soc-hero"><h2>Aún no hay entrenos que ver</h2><p class="muted small">Sigue a alguien del grupo para ver aquí sus entrenos. Si aún no han entrado, pásales tu código.</p><button class="btn primary wide" data-a="people">Buscar personas</button></section>';
+    }
+    rc.feed.posts.forEach(function (x) { h += isClass(x) ? feedClassCard(x, rc.feed.users[x.uid]) : feedCard(x, rc.feed.users[x.uid]); });
+    if (rc.feed.more) h += '<button class="btn wide" data-a="feed-more">' + (rc.loading.feed ? 'Cargando…' : 'Ver más') + '</button>';
+    return h;
+  }
+  function followBtn(uid, rel, sm) {
+    var label = rel === 'following' ? 'Siguiendo' : rel === 'pending' ? 'Solicitado' : 'Seguir';
+    return '<button class="btn ' + (sm ? 'sm ' : '') + (rel === 'none' ? 'primary' : '') + ' fol" data-a="followtog" data-u="' + esc(uid) + '" data-rel="' + rel + '">' + label + '</button>';
+  }
+  function viewWho(uid) {
+    var L = rc.lists[uid];
+    if (!L || stale(L.t)) loadWho(uid);
+    var h = '<header class="top"><div><button class="back" data-a="who-back">‹ Amigos</button></div></header>' + netNote();
+    if (!L) return h + '<div class="empty">Cargando…</div>';
+    var u = L.prof.user, c = L.prof.counts, isMe = uid === soc().uid;
+    h += '<section class="who">' + avatar(u, true) + '<div class="who-t"><h1>' + esc(u.name) + '</h1><div class="sub">@' + esc(u.username) + (L.prof.followsMe ? ' · te sigue' : '') + '</div></div></section>';
+    if (!L.prof.canSee) {
+      return h + '<div class="who-n">' + followBtn(uid, L.prof.rel) + '</div>' +
+        '<section class="card pad priv"><div class="priv-ic">🔒</div><h2>Cuenta privada</h2><p class="muted small">' + (L.prof.rel === 'pending' ? 'Solicitud enviada. Cuando ' + esc(u.name) + ' la acepte, verás aquí sus entrenos.' : 'Envía una solicitud para ver sus entrenos y fotos.') + '</p></section>';
+    }
+    var cnt = function (n, lab, k) { return isMe ? '<button class="who-b" data-a="rel-list" data-u="' + esc(uid) + '" data-k="' + k + '"><b>' + n + '</b>' + lab + '</button>' : '<span><b>' + n + '</b>' + lab + '</span>'; };
+    h += '<div class="who-n"><span><b>' + c.posts + '</b>entrenos</span>' + cnt(c.followers, 'seguidores', 'followers') + cnt(c.following, 'siguiendo', 'following') + (isMe ? '' : followBtn(uid, L.prof.rel)) + '</div>';
+    return h + perfilBody(L.posts, function (x) { return 'data-a="rsess" data-u="' + esc(x.uid) + '" data-id="' + esc(x.id) + '" data-from="who"'; }, isMe ? 'Aún no has guardado ningún entreno.' : 'Todavía no ha guardado ningún entreno.', isMe);
+  }
+  function viewPeople() {
+    var me = soc();
+    if (!rc.users || stale(rc.usersT, 15000)) loadUsers();
+    var h = '<header class="top"><div><button class="back" data-a="people-back">‹ ' + (ui.peopleFrom === 'perfil' ? 'Perfil' : 'Amigos') + '</button><h1>Personas</h1></div></header>' + netNote();
+    h += '<section class="card pad"><h2>Invita a tu grupo</h2><p class="muted small">Pásales este código. Al abrir la app: Amigos › «Tengo un código».</p>' +
+      '<div class="code" id="soc-code">' + esc(me.code) + '</div><div class="r-btns"><button class="btn primary" data-a="soc-share">Enviar invitación</button><button class="btn" data-a="soc-copy">Copiar código</button></div></section>';
+    var reqs = (rc.me && rc.me.requests) || [];
+    if (reqs.length) {
+      h += '<h3 class="sec">Solicitudes de seguimiento</h3><div class="card list">' + reqs.map(function (r) {
+        return '<div class="li ppl"><button class="by" data-a="who" data-u="' + esc(r.uid) + '">' + avatar(r) + '<span class="by-t"><b>' + esc(r.name) + '</b><span class="muted small">@' + esc(r.username) + '</span></span></button>' +
+          '<span class="req-b"><button class="btn sm primary" data-a="req-accept" data-u="' + esc(r.uid) + '">Aceptar</button><button class="btn sm" data-a="req-reject" data-u="' + esc(r.uid) + '" aria-label="Rechazar">✕</button></span></div>';
+      }).join('') + '</div>';
+    }
+    h += '<h3 class="sec">En el grupo</h3>';
+    if (!rc.users) return h + '<div class="empty">Cargando…</div>';
+    h += '<div class="card list">' + rc.users.map(function (u) {
+      var isMe = u.uid === me.uid, sub = isMe ? '@' + u.username : u.rel === 'following' && u.posts != null ? '@' + u.username + ' · ' + u.posts + (u.posts === 1 ? ' entreno' : ' entrenos') : '@' + u.username;
+      return '<div class="li ppl"><button class="by" data-a="who" data-u="' + esc(u.uid) + '">' + avatar(u) + '<span class="by-t"><b>' + esc(u.name) + (isMe ? ' (tú)' : '') + '</b><span class="muted small">' + esc(sub) + '</span></span></button>' +
+        (isMe ? '' : followBtn(u.uid, u.rel, true)) + '</div>';
+    }).join('') + '</div>';
+    h += '<button class="link danger" data-a="soc-leave">Salir del grupo y borrar mis datos del servidor</button>';
+    return h;
+  }
+
+  // Lista de seguidores (con «Quitar» en la mía) o de seguidos
+  function viewRel(uid, kind) {
+    var isMe = uid === soc().uid, L = rc.lists[uid];
+    if (!L || stale(L.t)) loadWho(uid);
+    var who = L && L.prof.user;
+    var h = '<header class="top"><div><button class="back" data-a="rel-back" data-u="' + esc(uid) + '">‹ ' + esc(who ? who.name : 'Atrás') + '</button><h1>' + (kind === 'followers' ? 'Seguidores' : 'Siguiendo') + '</h1></div></header>' + netNote();
+    var key = uid + '/' + kind, R = rc.rels[key];
+    if (!R || stale(R.t)) {
+      rcLoad('rel' + key, function () {
+        return socCall(isMe ? 'me' : 'profile', isMe ? {} : { uid: uid }).then(function () {
+          // la lista de otra persona no es visible salvo la mía; mostramos la del propio usuario (me)
+          return socCall('me').then(function (m) {
+            var ids = kind === 'followers' ? m.followers : m.following;
+            return socCall('users').then(function (us) {
+              var by = {}; us.users.forEach(function (u) { by[u.uid] = u; });
+              rc.rels[key] = { list: ids.map(function (id) { return by[id]; }).filter(Boolean), t: Date.now() };
+            });
+          });
+        });
+      });
+    }
+    if (!R) return h + '<div class="empty">Cargando…</div>';
+    if (!R.list.length) return h + '<div class="empty">' + (kind === 'followers' ? 'Nadie te sigue todavía.' : 'Aún no sigues a nadie.') + '</div>';
+    h += '<div class="card list">' + R.list.map(function (u) {
+      return '<div class="li ppl"><button class="by" data-a="who" data-u="' + esc(u.uid) + '">' + avatar(u) + '<span class="by-t"><b>' + esc(u.name) + '</b><span class="muted small">@' + esc(u.username) + '</span></span></button>' +
+        (isMe && kind === 'followers' ? '<button class="btn sm" data-a="rm-follower" data-u="' + esc(u.uid) + '">Quitar</button>' : isMe ? followBtn(u.uid, u.rel, true) : '') + '</div>';
+    }).join('') + '</div>';
+    return h;
+  }
   function viewSet() {
     var lb = state.settings.lastBackup;
     return '<header class="top"><div><button class="back" data-a="tab" data-t="perfil">‹ Perfil</button><h1>Ajustes</h1></div></header>' +
@@ -1068,7 +1423,7 @@
       '<section class="card pad"><h2>Fútbol y correr</h2><label class="switch"><span>Cuentan (poco) en la fatiga de piernas</span><input type="checkbox" data-f="actFatigue"' + (state.settings.actFatigue !== false ? ' checked' : '') + '></label></section>' +
       '<section class="card pad"><h2>Instalar en el iPhone</h2><p class="muted small">En Safari: botón Compartir → «Añadir a pantalla de inicio». Así se abre a pantalla completa y los datos se conservan.</p></section>' +
       '<section class="card pad"><h2>Datos iniciales</h2><p class="muted small">Vuelve a cargar tus 17 ejercicios con la última sesión de las capturas. Borra tu historial.</p><button class="btn danger" data-a="reset">Restaurar datos iniciales</button></section>' +
-      '<div class="muted small center" id="ver">Versión 2.5 ({{VER}}) · progresión al fallo con doble progresión</div>';
+      '<div class="muted small center" id="ver">Versión 3.0 ({{VER}}) · progresión al fallo con doble progresión</div>';
   }
 
   /* ---------- modales ---------- */
@@ -1111,9 +1466,21 @@
     } else if (m.type === 'day') {
       var p = m.day.split('-').map(Number), dt = new Date(p[0], p[1] - 1, p[2]);
       var gs = state.sessions.filter(function (s) { return dayKey(s.t) === m.day; });
+      var cls = classActs().filter(function (a) { return a.day === m.day; });
       h = '<h2 class="cap">' + esc(dt.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })) + '</h2>' +
+        (cls.length ? '<div class="card list">' + cls.map(function (a) { return '<button class="li li-btn" data-a="class-edit" data-id="' + esc(a.id) + '"><div class="ex-name">' + classIcon(a.classKind) + ' ' + esc(classTitle(a)) + '</div><div class="muted small">' + a.min + ' min' + (a.rpe ? ' · ' + a.rpe + '/10' : '') + ' ›</div></button>'; }).join('') + '</div>' : '') +
         (gs.length ? '<div class="card list">' + gs.map(function (s) { var n = s.exercises.reduce(function (a, e) { return a + e.sets.length; }, 0); return '<button class="li li-btn" data-a="sess" data-id="' + esc(s.id) + '"><div class="ex-name"><span class="ic-gym">' + MINI_DB + '</span> ' + esc(s.name) + '</div><div class="muted small">' + n + ' series' + (s.prs && s.prs.length ? ' · 🏆 ' + s.prs.length : '') + ' ›</div></button>'; }).join('') + '</div>' : '<p class="muted">Sin gimnasio este día.</p>') +
         '<div class="lbl">Otras actividades</div>' + actButtons(m.day) + '<button class="btn primary wide" data-a="close">Listo</button>';
+    } else if (m.type === 'clase') {
+      h = classModalHtml(m);
+    } else if (m.type === 'soc') {
+      var join = m.mode === 'join';
+      h = '<h2>' + (join ? 'Unirme a un grupo' : 'Crear grupo') + '</h2><p class="muted small">' + (join ? 'Pega el código que te han enviado y elige cómo te verán los demás.' : 'Elige cómo te verán los demás. Después podrás enviar el código del grupo a tus amigos.') + '</p>' +
+        (join ? '<label>Código del grupo<input id="s-code" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="GYM1-…"></label>' : '') +
+        '<label>Tu nombre<input id="s-name" maxlength="30" autocomplete="given-name" placeholder="Ej.: Pau"></label>' +
+        '<label>Nombre de usuario<input id="s-user" maxlength="20" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Ej.: pau"></label>' +
+        '<p class="muted small">Minúsculas, números, punto o guion bajo (3–20).</p><p class="err" id="s-err" hidden></p>' +
+        '<div class="r-btns"><button class="btn" data-a="close">Cancelar</button><button class="btn primary" data-a="soc-go">' + (join ? 'Unirme' : 'Crear grupo') + '</button></div>';
     } else if (m.type === 'photo') {
       h = '<img class="ph-full" data-ph="' + esc(m.id) + '"' + (purl[m.id] ? ' src="' + purl[m.id] + '"' : '') + ' alt="Foto del entreno"><div class="r-btns"><button class="btn" data-a="close">Cerrar</button><button class="btn danger" data-a="photo-del">Borrar foto</button></div>';
     } else if (m.type === 'paste') {
@@ -1184,9 +1551,9 @@
   }
   function render() {
     var y = getY();
-    var html = ui.tab === 'hoy' ? (state.active ? viewWorkout() : viewHoy()) : ui.tab === 'cal' ? viewCal() : ui.tab === 'ej' ? viewEj() : ui.tab === 'prog' ? viewProg() : ui.tab === 'perfil' ? viewPerfil() : viewSet();
+    var html = ui.tab === 'hoy' ? (state.active ? viewWorkout() : viewHoy()) : ui.tab === 'cal' ? viewCal() : ui.tab === 'ej' ? viewEj() : ui.tab === 'prog' ? viewProg() : ui.tab === 'perfil' ? viewPerfil() : ui.tab === 'amigos' ? viewAmigos() : viewSet();
     $('#app').innerHTML = html;
-    renderTabs(); updateTimer(); syncMute(); updateWprog(); clockSync(); hydratePhotos();
+    renderTabs(); updateTimer(); syncMute(); updateWprog(); clockSync(); hydratePhotos(); hydrateRemote();
     setY(y);
   }
   var toastT = null;
@@ -1277,7 +1644,7 @@
     var d; try { d = JSON.parse(txt); } catch (e) { toast('El texto no es una copia válida'); return; }
     if (!d || d.v !== 1 || !Array.isArray(d.exercises) || !d.routines || !Array.isArray(d.sessions)) { toast('El archivo no es una copia de Gym'); return; }
     ask('Importar copia', 'Esto reemplaza todos los datos actuales (' + d.sessions.length + ' sesiones en la copia).', 'Importar', function () {
-      d.active = null; d.timer = null; d.activities = d.activities || []; d.settings = d.settings || { sound: true, lastBackup: 0, actFatigue: true }; var ps = state.settings; clearTimer(); state = d; state.settings.push = ps.push; state.settings.pushId = ps.pushId; unwake(); save(); closeModal(); ui.tab = 'hoy'; render(); toast('Copia importada');
+      d.active = null; d.timer = null; d.activities = d.activities || []; d.settings = d.settings || { sound: true, lastBackup: 0, actFatigue: true }; var ps = state.settings; clearTimer(); state = d; state.settings.push = ps.push; state.settings.pushId = ps.pushId; state.settings.social = ps.social || null; unwake(); save(); closeModal(); ui.tab = 'hoy'; render(); toast('Copia importada');
     }, true);
   }
 
@@ -1292,11 +1659,15 @@
     var a = el.getAttribute('data-a'), i = parseInt(el.getAttribute('data-i'), 10), j = parseInt(el.getAttribute('data-j'), 10);
     var act = state.active;
     switch (a) {
-      case 'tab': { ui.tab = el.getAttribute('data-t'); ui.sessOpen = null; closeModal(); render(); setY(0); var ap = $('#app'); ap.classList.remove('enter'); void ap.offsetWidth; ap.classList.add('enter'); break; }
+      case 'tab': { ui.tab = el.getAttribute('data-t'); ui.sessOpen = null; ui.people = false; ui.who = null; ui.rsess = null; ui.rel = null; if (ui.tab === 'amigos') { rc.feedT = 0; rc.usersT = 0; } closeModal(); render(); setY(0); var ap = $('#app'); ap.classList.remove('enter'); void ap.offsetWidth; ap.classList.add('enter'); break; }
       case 'close': closeModal(); break;
       case 'cal-prev': case 'cal-next': { var c = calState(); var d = new Date(c.y, c.m + (a === 'cal-next' ? 1 : -1), 1); ui.cal = { y: d.getFullYear(), m: d.getMonth() }; render(); break; }
       case 'day': openModal({ type: 'day', day: el.getAttribute('data-d') }); break;
       case 'act': { toggleAct(el.getAttribute('data-d'), el.getAttribute('data-type')); if (ui.modal && ui.modal.type === 'day') renderModal(); render(); break; }
+      case 'class-add': openModal({ type: 'clase', day: el.getAttribute('data-d') }); break;
+      case 'class-edit': { var ce = classById(el.getAttribute('data-id')); if (ce) openModal({ type: 'clase', edit: true, id: ce.id, day: ce.day }); break; }
+      case 'class-save': saveClass(); break;
+      case 'class-del': { var cid = el.getAttribute('data-id'), ca = classById(cid); if (!ca) { closeModal(); break; } ca._gone = 1; var di = state.activities.indexOf(ca); state.activities.splice(di, 1); save(); closeModal(); render(); toast('Clase borrada', function () { state.activities.splice(Math.min(di, state.activities.length), 0, ca); delete ca._gone; save(); render(); }); break; }
       case 'an-apply': {
         var sx = sessById(el.getAttribute('data-sid')), it = sx && sx.analysis && sx.analysis.items[parseInt(el.getAttribute('data-k'), 10)];
         var exa = it && exById(it.exId);
@@ -1466,6 +1837,95 @@
         toast('Foto borrada', function () { clearTimeout(pdel); var py = sessById(px.id); if (py) { (py.photos = py.photos || []).splice(Math.min(pi, py.photos.length), 0, pid); save(); render(); } });
         break;
       }
+      case 'soc-start': openModal({ type: 'soc', mode: el.getAttribute('data-m') }); break;
+      case 'soc-go': {
+        var mode = ui.modal.mode, nm = ($('#s-name').value || '').trim(), un = ($('#s-user').value || '').trim().toLowerCase().replace(/^@/, '');
+        var cm = mode === 'join' ? (($('#s-code').value || '').match(CODE_RE) || [''])[0] : newCode();
+        var err = function (t) { var e2 = $('#s-err'); e2.textContent = t; e2.hidden = false; };
+        if (mode === 'join' && !cm) { err('Ese código no es válido. Cópialo entero desde el mensaje.'); break; }
+        if (!nm) { err('Escribe tu nombre.'); break; }
+        if (!/^[a-z0-9_.]{3,20}$/.test(un)) { err('El nombre de usuario debe tener 3–20 letras minúsculas, números, punto o guion bajo.'); break; }
+        if (!PUSH.url) { err('No hay servidor configurado.'); break; }
+        el.disabled = true; el.textContent = 'Un momento…';
+        socKeys(cm).then(function (k) { return socCall('register', { proof: k.proof, username: un, name: nm }, true); }).then(function (r) {
+          state.settings.social = { uid: r.uid, token: r.token, username: un, name: nm, code: cm }; save(); closeModal();
+          rc = { feed: null, feedT: 0, users: null, usersT: 0, me: null, lists: {}, rels: {}, loading: {} };
+          ui.tab = 'amigos'; ui.people = mode === 'create'; ui.peopleFrom = 'amigos'; render(); setY(0);
+          toast(mode === 'create' ? 'Grupo creado. Envía el código a tus amigos' : '¡Ya estás dentro! Sigue a tus amigos');
+          socSync(true);
+        }).catch(function (e) {
+          el.disabled = false; el.textContent = mode === 'join' ? 'Unirme' : 'Crear grupo';
+          var st2 = e && e.status, er = e && e.message;
+          err(st2 === 409 ? 'Ese nombre de usuario ya está cogido.' : st2 === 403 && er === 'code' ? (mode === 'join' ? 'El código no es el de este grupo.' : 'Ya existe un grupo. Pide el código a quien lo creó y usa «Tengo un código».') : st2 === 403 ? 'El grupo está completo.' : 'No se pudo conectar. Revisa la conexión e inténtalo otra vez.');
+        });
+        break;
+      }
+      case 'soc-copy': {
+        var code = soc().code;
+        var done = function () { toast('Código copiado'); };
+        try { navigator.clipboard.writeText(code).then(done, function () { openModal({ type: 'text', title: 'Código del grupo', text: code }); }); } catch (e) { openModal({ type: 'text', title: 'Código del grupo', text: code }); }
+        break;
+      }
+      case 'soc-share': {
+        var msg = 'Únete a mi grupo de entreno 💪\n1) Abre ' + location.href.split('#')[0] + ' en Safari y añádela a la pantalla de inicio (Compartir › Añadir a pantalla de inicio).\n2) En la app, ve a Amigos › «Tengo un código» y pega este código:\n' + soc().code;
+        if (navigator.share) navigator.share({ text: msg }).catch(noop);
+        else { try { navigator.clipboard.writeText(msg).then(function () { toast('Invitación copiada'); }); } catch (e) { openModal({ type: 'text', title: 'Invitación', text: msg }); } }
+        break;
+      }
+      case 'followtog': {
+        var fu = el.getAttribute('data-u'), rel = el.getAttribute('data-rel');
+        var send = rel === 'none' ? 'request' : 'unfollow';
+        el.disabled = true;
+        socCall(send, { uid: fu }).then(function (r) {
+          var nrel = send === 'request' ? (r.rel || 'pending') : 'none';
+          (rc.users || []).forEach(function (u) { if (u.uid === fu) u.rel = nrel; });
+          if (rc.lists[fu]) { rc.lists[fu].prof.rel = nrel; rc.lists[fu].t = 0; }
+          Object.keys(rc.rels).forEach(function (k) { rc.rels[k].t = 0; });
+          rc.feed = null; rc.feedT = 0;
+          render(); toast(nrel === 'pending' ? 'Solicitud enviada' : nrel === 'following' ? 'Siguiendo' : rel === 'pending' ? 'Solicitud cancelada' : 'Has dejado de seguir');
+        }).catch(function () { el.disabled = false; toast('No se pudo conectar'); });
+        break;
+      }
+      case 'req-accept': case 'req-reject': {
+        var ru = el.getAttribute('data-u'), ok = a === 'req-accept';
+        el.disabled = true;
+        socCall(ok ? 'accept' : 'reject', { uid: ru }).then(function () {
+          if (rc.me) rc.me.requests = rc.me.requests.filter(function (r) { return r.uid !== ru; });
+          rc.usersT = 0; rc.feed = null; rc.feedT = 0; Object.keys(rc.rels).forEach(function (k) { rc.rels[k].t = 0; });
+          render(); toast(ok ? 'Solicitud aceptada' : 'Solicitud rechazada');
+        }).catch(function () { el.disabled = false; toast('No se pudo conectar'); });
+        break;
+      }
+      case 'rm-follower': {
+        var mu = el.getAttribute('data-u');
+        ask('Quitar seguidor', 'Dejará de ver tus entrenos. Puede volver a solicitártelo.', 'Quitar', function () {
+          socCall('remove', { uid: mu }).then(function () {
+            Object.keys(rc.rels).forEach(function (k) { rc.rels[k].t = 0; }); rc.usersT = 0;
+            closeModal(); render(); toast('Seguidor quitado');
+          }).catch(function () { closeModal(); toast('No se pudo conectar'); });
+        }, true);
+        break;
+      }
+      case 'rel-list': ui.relKind = el.getAttribute('data-k'); ui.relFrom = ui.who ? 'who' : ui.tab === 'perfil' ? 'perfil' : 'amigos'; ui.relWho = ui.who; if (ui.relFrom === 'perfil') { ui.peopleFrom = 'perfil'; } ui.tab = 'amigos'; ui.rel = el.getAttribute('data-k'); ui.relU = el.getAttribute('data-u'); ui.who = null; render(); setY(0); break;
+      case 'rel-back': ui.rel = null; if (ui.relFrom === 'who') { ui.who = ui.relWho; } else if (ui.relFrom === 'perfil') { ui.tab = 'perfil'; } render(); setY(0); break;
+      case 'people': rc.users = null; rc.usersT = 0; ui.peopleFrom = ui.tab === 'perfil' ? 'perfil' : 'amigos'; ui.tab = 'amigos'; ui.people = true; ui.who = null; ui.rsess = null; ui.rel = null; render(); setY(0); break;
+      case 'people-back': ui.people = false; if (ui.peopleFrom === 'perfil') ui.tab = 'perfil'; render(); setY(0); break;
+      case 'who': { var wu = el.getAttribute('data-u'); if (rc.lists[wu]) rc.lists[wu].t = 0; ui.tab = 'amigos'; ui.whoFrom = ui.people ? 'people' : ui.rsess ? 'rsess' : ui.rel ? 'rel' : 'feed'; ui.people = false; ui.rsess = null; ui.rel = null; ui.who = wu; render(); setY(0); break; }
+      case 'who-back': ui.who = null; if (ui.whoFrom === 'people') ui.people = true; else if (ui.whoFrom === 'rel') { ui.rel = ui.relKind || 'followers'; ui.relU = soc().uid; } render(); setY(0); break;
+      case 'rsess': {
+        if (!ui.rsess && !ui.who) ui.feedScroll = getY();
+        if (ui.who) ui.whoScroll = getY();
+        ui.rsessU = el.getAttribute('data-u'); ui.rsess = el.getAttribute('data-id'); ui.rsessFrom = el.getAttribute('data-from') || 'feed';
+        if (ui.rsessFrom === 'feed') ui.who = null;
+        render(); setY(0); var ap3 = $('#app'); ap3.classList.remove('enter'); void ap3.offsetWidth; ap3.classList.add('enter'); break;
+      }
+      case 'rsess-back': ui.rsess = null; render(); setY(ui.rsessFrom === 'who' ? ui.whoScroll || 0 : ui.feedScroll || 0); break;
+      case 'feed-more': loadFeed(true); render(); break;
+      case 'soc-leave': ask('Salir del grupo', 'Se borran del servidor tu cuenta, tus entrenos y tus fotos compartidas. En tu iPhone no se borra nada.', 'Salir', function () {
+        socCall('leave').then(function () {
+          state.settings.social = null; save(); closeModal(); ui.people = false; ui.who = null; ui.rsess = null; rc.feed = null; render(); toast('Has salido del grupo');
+        }).catch(function () { closeModal(); toast('No se pudo conectar'); });
+      }, true); break;
       case 'sess-back': ui.sessOpen = null; render(); setY(ui.pfScroll || 0); break;
       case 'pf-m': ui.pfM = el.getAttribute('data-v'); render(); break;
       case 'pf-more': ui.feedN = (ui.feedN || 20) + 20; render(); break;
@@ -1487,7 +1947,7 @@
       case 'import-file': $('#file').click(); break;
       case 'import-paste': openModal({ type: 'paste' }); break;
       case 'paste-yes': importText($('#paste').value); break;
-      case 'reset': ask('Restaurar datos iniciales', 'Se borran tu historial y los cambios hechos a ejercicios y rutinas.', 'Restaurar', function () { var ps = state.settings; clearTimer(); state = fresh(); state.settings.push = ps.push; state.settings.pushId = ps.pushId; unwake(); save(); closeModal(); ui.tab = 'hoy'; render(); toast('Datos iniciales restaurados'); }, true); break;
+      case 'reset': ask('Restaurar datos iniciales', 'Se borran tu historial y los cambios hechos a ejercicios y rutinas.', 'Restaurar', function () { var ps = state.settings; clearTimer(); state = fresh(); state.settings.push = ps.push; state.settings.pushId = ps.pushId; state.settings.social = ps.social || null; unwake(); save(); closeModal(); ui.tab = 'hoy'; render(); toast('Datos iniciales restaurados'); }, true); break;
     }
   });
 
@@ -1509,6 +1969,7 @@
     else if (t.getAttribute && t.getAttribute('data-f') === 'actFatigue') { state.settings.actFatigue = t.checked; save(); }
     else if (t.getAttribute && t.getAttribute('data-f') === 'photo') { if (t.files && t.files.length) addPhotos(t.getAttribute('data-sid'), t.files); t.value = ''; }
     else if (t.id === 'file' && t.files && t.files[0]) { var rd = new FileReader(); rd.onload = function () { importText(String(rd.result)); }; rd.readAsText(t.files[0]); t.value = ''; }
+    else if (t.getAttribute && t.getAttribute('data-f') === 'c-kind' && ui.modal && ui.modal.type === 'clase') { ui.modal.kind = t.value; renderModal(); }
     else if (t.id === 'f-equip' && ui.modal && ui.modal.type === 'exedit' && ui.modal.isNew && !ui.modal.stepTouched) { $('#f-step').value = fmt(STEP_DEFAULT[t.value] || 2.5); $('#f-unit').value = 'kg'; }
   });
   document.addEventListener('focusin', function (ev) {
@@ -1521,6 +1982,9 @@
   render();
   if (state.active) wake();
   pushRefresh(); closeRestNotes(); gcPhotos(); slimPhotos();
+  if (soc()) setTimeout(function () { socSync(true); }, 600);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && soc()) { socSoon(); if (ui.tab === 'amigos') { rc.feedT = 0; render(); } } });
+  window.addEventListener('online', function () { if (soc()) { socSync(true); if (ui.tab === 'amigos') render(); } });
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     // Versión nueva: se recarga sola (si estás en mitad de un entreno, al volver a la app; los datos ya están guardados)
     var hadSW = !!navigator.serviceWorker.controller, reloadPending = false, swReg = null;
@@ -1536,5 +2000,5 @@
     });
     window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (r) { swReg = r; }).catch(function () { }); });
   }
-  window.__gym = { get state() { return state; }, E: E, sounds: sounds, get clockOn() { return !!clock; } }; // útil para pruebas
+  window.__gym = { get state() { return state; }, E: E, sounds: sounds, socSync: socSync, get socBusy() { return socBusy; }, get clockOn() { return !!clock; } }; // útil para pruebas
 })();

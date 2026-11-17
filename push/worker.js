@@ -3,8 +3,11 @@
 // programa una alarma para el final del descanso. Al saltar, envía un Web Push sin
 // contenido (el service worker de la app pone el texto). No guarda nada más.
 //
+// Parte social (/s/...): ver social.js.
 // Rutas (POST, JSON): /sub {id, sub}  /arm {id, at}  /cancel {id}  /test {id}  /status {id}
 // Secreto: VAPID_PRIVATE_JWK (JWK de la clave privada P-256). Var: VAPID_SUB.
+
+export { Social } from './social.js';
 
 const ORIGINS = ['https://secundariaxdx-dot.github.io'];
 const PUSH_HOSTS = /^(web\.push\.apple\.com|[a-z0-9.-]+\.push\.apple\.com|fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com)$/;
@@ -25,6 +28,14 @@ export default {
     const url = new URL(req.url);
     if (req.method === 'GET' && url.pathname === '/') return new Response('gym-push ok');
     if (!h) return json({ error: 'origin' }, 403);
+    // parte social: todo va al Durable Object único del grupo
+    if (url.pathname.startsWith('/s/')) {
+      if (req.method !== 'POST') return json({ error: 'not found' }, 404, h);
+      const len = Number(req.headers.get('Content-Length') || 0);
+      if (len > 600000) return json({ error: 'too big' }, 413, h);
+      const r = await env.SOCIAL.get(env.SOCIAL.idFromName('main')).fetch('https://do' + url.pathname, { method: 'POST', body: await req.text() });
+      return new Response(r.body, { status: r.status, headers: { 'Content-Type': 'application/json', ...h } });
+    }
     if (req.method !== 'POST' || !['/sub', '/arm', '/cancel', '/test', '/status'].includes(url.pathname)) return json({ error: 'not found' }, 404, h);
     let body;
     try { body = await req.json(); } catch (e) { return json({ error: 'json' }, 400, h); }

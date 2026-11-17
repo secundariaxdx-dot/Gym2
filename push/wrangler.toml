@@ -10,6 +10,14 @@ VAPID_SUB = "https://secundariaxdx-dot.github.io/Gym2/"
 name = "REST"
 class_name = "Rest"
 
+[[durable_objects.bindings]]
+name = "SOCIAL"
+class_name = "Social"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Rest"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Social"]

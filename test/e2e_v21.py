@@ -33,7 +33,7 @@ try:
 
         # --- sin entrenos
         tabs = pg.locator('#tabs .tab span').all_inner_texts()
-        check(tabs == ['Hoy', 'Calendario', 'Ejercicios', 'Progreso', 'Perfil'], 'Pestañas: %s' % tabs)
+        check(tabs == ['Hoy', 'Amigos', 'Calendario', 'Ejercicios', 'Progreso', 'Perfil'], 'Pestañas: %s' % tabs)
         pg.click('[data-t=perfil]')
         check('Aquí aparecerán tus entrenos' in pg.inner_text('#app') and pg.locator('.tile').count() == 4, 'Perfil vacío con resumen a cero')
         # Ajustes dentro de Perfil
