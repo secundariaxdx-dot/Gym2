@@ -72,6 +72,13 @@ try:
         q = pg.evaluate(GEO)
         check(q['tabs'][1] == 520 and q['docH'] == 520 and q['dock'][1] == q['tabs'][0], 'Con menos altura sigue encajado')
 
+        # la regla de iOS 26 para la app instalada (Chrome no puede simular ese modo): aplicada a mano,
+        # donde el fallo no existe no debe cambiar nada
+        pg.add_style_tag(content='html { height: auto !important; min-height: min(100lvh, calc(100% + env(safe-area-inset-top))) !important; }')
+        pg.wait_for_timeout(100)
+        q = pg.evaluate(GEO)
+        check(q['tabs'][1] == q['vh'] and q['winY'] == 0 and q['dock'][1] == q['tabs'][0] and q['docH'] == q['vh'], 'Regla de iOS 26 aplicada: todo sigue encajado y sin desplazarse')
+
         # sin entreno: solo pestañas
         pg.set_viewport_size({'width': 375, 'height': 812})
         pg.click('[data-a=discard]'); pg.click('[data-a=confirm-yes]'); pg.wait_for_selector('.routine')

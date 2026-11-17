@@ -413,3 +413,12 @@ body.modal-open #scroller { overflow: hidden; }
 #app { padding: 14px 16px 28px; }
 #dock, #tabs { position: static; flex: none; -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--card); }
 section.ex { scroll-margin-top: 12px; scroll-margin-bottom: 12px; }
+
+/* v2.5 · iOS 26 (WebKit 301108): en la app instalada con barra de estado translúcida, la ventana mide
+   la altura de la barra de estado de menos mientras la página no sea más alta que la pantalla, y
+   todo lo anclado abajo se queda corto (franja negra bajo las pestañas). Si el documento es al menos tan
+   alto como la pantalla, iOS le da la ventana completa. min() evita pasarse donde el fallo no existe. */
+@media (display-mode: standalone) {
+  html { height: auto; min-height: min(100lvh, calc(100% + env(safe-area-inset-top))); }
+}
+#tabs { padding-bottom: max(6px, env(safe-area-inset-bottom)); }

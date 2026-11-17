@@ -430,6 +430,15 @@ body.modal-open #scroller { overflow: hidden; }
 #dock, #tabs { position: static; flex: none; -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--card); }
 section.ex { scroll-margin-top: 12px; scroll-margin-bottom: 12px; }
 
+/* v2.5 · iOS 26 (WebKit 301108): en la app instalada con barra de estado translúcida, la ventana mide
+   la altura de la barra de estado de menos mientras la página no sea más alta que la pantalla, y
+   todo lo anclado abajo se queda corto (franja negra bajo las pestañas). Si el documento es al menos tan
+   alto como la pantalla, iOS le da la ventana completa. min() evita pasarse donde el fallo no existe. */
+@media (display-mode: standalone) {
+  html { height: auto; min-height: min(100lvh, calc(100% + env(safe-area-inset-top))); }
+}
+#tabs { padding-bottom: max(6px, env(safe-area-inset-bottom)); }
+
 </style>
 </head>
 <body>
@@ -1982,7 +1991,7 @@ section.ex { scroll-margin-top: 12px; scroll-margin-bottom: 12px; }
       '<section class="card pad"><h2>Fútbol y correr</h2><label class="switch"><span>Cuentan (poco) en la fatiga de piernas</span><input type="checkbox" data-f="actFatigue"' + (state.settings.actFatigue !== false ? ' checked' : '') + '></label></section>' +
       '<section class="card pad"><h2>Instalar en el iPhone</h2><p class="muted small">En Safari: botón Compartir → «Añadir a pantalla de inicio». Así se abre a pantalla completa y los datos se conservan.</p></section>' +
       '<section class="card pad"><h2>Datos iniciales</h2><p class="muted small">Vuelve a cargar tus 17 ejercicios con la última sesión de las capturas. Borra tu historial.</p><button class="btn danger" data-a="reset">Restaurar datos iniciales</button></section>' +
-      '<div class="muted small center" id="ver">Versión 2.4 (gym-v17) · progresión al fallo con doble progresión</div>';
+      '<div class="muted small center" id="ver">Versión 2.5 (gym-v18) · progresión al fallo con doble progresión</div>';
   }
 
   /* ---------- modales ---------- */
