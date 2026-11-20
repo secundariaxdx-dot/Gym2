@@ -500,3 +500,20 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
 #ptr.spin .ptr-s { border-top-color: var(--accent); animation: ptr-spin 0.7s linear infinite; }
 @keyframes ptr-spin { to { transform: rotate(360deg); } }
 #scroller { overscroll-behavior-x: none; }
+
+/* v3.5 suplementos */
+.supp-h { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.supp-h h2 { margin: 0; }
+.supp-row, .supp-li { width: 100%; background: none; border: 0; border-bottom: 1px solid var(--line); font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.supp-row { justify-content: flex-start; }
+.list > .li:last-child { border-bottom: 0; }
+.supp-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.supp-t b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.supp-chk { width: 26px; height: 26px; flex: none; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; font-weight: 700; color: var(--on-accent); transition: background .15s, border-color .15s; }
+.supp-row.done .supp-chk { background: var(--accent); border-color: var(--accent); }
+.supp-row.done .supp-t b { color: var(--muted); }
+.supp-dose { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.supp-time { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+.supp-time .in { flex: 1; }
+.supp-empty { width: 100%; text-align: left; }
+.li .right.ok { color: var(--accent); font-weight: 600; }

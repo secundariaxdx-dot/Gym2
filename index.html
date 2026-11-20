@@ -517,6 +517,23 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
 @keyframes ptr-spin { to { transform: rotate(360deg); } }
 #scroller { overscroll-behavior-x: none; }
 
+/* v3.5 suplementos */
+.supp-h { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.supp-h h2 { margin: 0; }
+.supp-row, .supp-li { width: 100%; background: none; border: 0; border-bottom: 1px solid var(--line); font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.supp-row { justify-content: flex-start; }
+.list > .li:last-child { border-bottom: 0; }
+.supp-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.supp-t b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.supp-chk { width: 26px; height: 26px; flex: none; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; font-weight: 700; color: var(--on-accent); transition: background .15s, border-color .15s; }
+.supp-row.done .supp-chk { background: var(--accent); border-color: var(--accent); }
+.supp-row.done .supp-t b { color: var(--muted); }
+.supp-dose { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.supp-time { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+.supp-time .in { flex: 1; }
+.supp-empty { width: 100%; text-align: left; }
+.li .right.ok { color: var(--accent); font-weight: 600; }
+
 </style>
 </head>
 <body>
@@ -1051,13 +1068,13 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
   function fresh() {
     return {
       v: 1, exercises: JSON.parse(JSON.stringify(SEED.exercises)).map(function (e) { delete e.baseline; return e; }), routines: JSON.parse(JSON.stringify(SEED.routines)),
-      sessions: [], activities: [], routineOrder: ['push', 'pull', 'legs'], active: null, settings: { sound: true, lastBackup: 0, actFatigue: true }, created: Date.now()
+      sessions: [], activities: [], supps: [], suppLog: {}, routineOrder: ['push', 'pull', 'legs'], active: null, settings: { sound: true, lastBackup: 0, actFatigue: true }, created: Date.now()
     };
   }
   function load() {
     try {
       var raw = localStorage.getItem(KEY);
-      if (raw) { var s = JSON.parse(raw); if (s && s.v === 1 && s.exercises && s.routines) { s.settings = s.settings || { sound: true, lastBackup: 0 }; if (s.settings.actFatigue === undefined) s.settings.actFatigue = true; s.sessions = s.sessions || []; s.activities = s.activities || []; return s; } }
+      if (raw) { var s = JSON.parse(raw); if (s && s.v === 1 && s.exercises && s.routines) { s.settings = s.settings || { sound: true, lastBackup: 0 }; if (s.settings.actFatigue === undefined) s.settings.actFatigue = true; s.sessions = s.sessions || []; s.activities = s.activities || []; s.supps = s.supps || []; s.suppLog = s.suppLog || {}; return s; } }
     } catch (e) { memoryOnly = true; }
     return fresh();
   }
@@ -1306,7 +1323,7 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
 
   function renderTabs() {
     var tabs = [['hoy', 'Hoy'], ['amigos', 'Amigos'], ['cal', 'Calendario'], ['ej', 'Ejercicios'], ['prog', 'Progreso'], ['perfil', 'Perfil']];
-    var cur = ui.tab === 'aj' ? 'perfil' : ui.tab; // Ajustes vive dentro de Perfil
+    var cur = (ui.tab === 'aj' || ui.tab === 'supl') ? 'perfil' : ui.tab; // Ajustes vive dentro de Perfil
     $('#tabs').innerHTML = tabs.map(function (t) {
       return '<button class="tab' + (cur === t[0] ? ' on' : '') + '" data-a="tab" data-t="' + t[0] + '">' + svg(ICON[t[0]]) + '<span>' + t[1] + '</span></button>';
     }).join('');
@@ -2219,6 +2236,7 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
         '<span class="me-n"><button class="me-b" data-a="rel-list" data-u="' + esc(me.uid) + '" data-k="followers"><b>' + (mc ? mc.followers : '–') + '</b>seguidores</button><button class="me-b" data-a="rel-list" data-u="' + esc(me.uid) + '" data-k="following"><b>' + (mc ? mc.following : '–') + '</b>siguiendo</button></span></div>' +
         (nR ? '<button class="banner" data-a="people"><div><b>' + nR + (nR === 1 ? ' solicitud de seguimiento' : ' solicitudes de seguimiento') + '</b></div><span class="chip ok">Ver</span></button>' : '');
     }
+    h += suppCard();
     return h + perfilBody(ss.concat(classActs()), function (x) { return 'data-a="sess" data-id="' + esc(x.id) + '"'; }, 'Aquí aparecerán tus entrenos cuando guardes el primero.', true);
   }
   // Resumen, gráfico de 12 semanas y registro: el mío o el de una persona a la que sigo
@@ -2437,6 +2455,107 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
     }).join('') + '</div>';
     return h;
   }
+  /* ---------- suplementos (privados: solo en este iPhone, no se comparten con el grupo) ---------- */
+  var SUPP_UNITS = ['g', 'mg', 'µg', 'ml', 'cápsulas', 'comprimidos', 'cacitos', 'gotas', 'UI'];
+  var WD = ['L', 'M', 'X', 'J', 'V', 'S', 'D']; // lunes = 0
+  function wdIdx(d) { return (d.getDay() + 6) % 7; }
+  function suppById(id) { for (var i = 0; i < state.supps.length; i++) if (state.supps[i].id === id) return state.supps[i]; return null; }
+  function suppDue(sp, d) { // ¿toca este día? (los «a demanda» no tienen tomas fijas)
+    if (sp.paused || sp.freq === 'demanda') return false;
+    if (sp.freq === 'dias') return (sp.days || []).indexOf(wdIdx(d)) >= 0;
+    return true;
+  }
+  function suppSlots(sp) { return sp.times && sp.times.length ? sp.times.slice().sort() : ['']; }
+  function suppLogDay(k) { return state.suppLog[k] || {}; }
+  function suppToday() { // [{sp, time, key, done}]
+    var d = new Date(), k = dayKey(d.getTime()), log = suppLogDay(k), out = [];
+    state.supps.forEach(function (sp) {
+      if (suppDue(sp, d)) suppSlots(sp).forEach(function (tm) { var key = sp.id + '@' + tm; out.push({ sp: sp, time: tm, key: key, done: !!log[key] }); });
+    });
+    return out.sort(function (a, b) { return (a.time || '99') < (b.time || '99') ? -1 : (a.time || '99') > (b.time || '99') ? 1 : 0; });
+  }
+  function doseText(sp) { return sp.dose ? String(sp.dose).replace('.', ',') + ' ' + esc(sp.unit || '') : ''; }
+  function suppRow(it) {
+    return '<button class="li supp-row' + (it.done ? ' done' : '') + '" data-a="supp-tick" data-k="' + esc(it.key) + '"><span class="supp-chk" aria-hidden="true">' + (it.done ? '✓' : '') + '</span>' +
+      '<span class="supp-t"><b>' + esc(it.sp.name) + '</b><span class="muted small">' + [doseText(it.sp), it.time].filter(Boolean).join(' · ') + '</span></span></button>';
+  }
+  function suppCard() {
+    if (!state.supps.length) return '<button class="card banner supp-empty" data-a="tab" data-t="supl"><div><b>Suplementos</b><div class="muted small">Apunta los que tomas y marca cada toma</div></div><span class="chip ok">Añadir</span></button>';
+    var td = suppToday(), n = td.filter(function (x) { return x.done; }).length;
+    var h = '<section class="card pad" id="supp-card"><div class="supp-h"><h2>Suplementos de hoy</h2><button class="btn sm" data-a="tab" data-t="supl">Gestionar</button></div>';
+    if (!td.length) h += '<p class="muted small">Hoy no tienes tomas programadas.</p>';
+    else h += '<p class="muted small">' + n + ' de ' + td.length + (td.length === 1 ? ' toma' : ' tomas') + '</p><div class="list">' + td.map(suppRow).join('') + '</div>';
+    return h + '</section>';
+  }
+  function viewSupl() {
+    var h = '<header class="top"><div><button class="back" data-a="tab" data-t="perfil">‹ Perfil</button><h1>Suplementos</h1></div><button class="btn sm primary" data-a="supp-new">+ Añadir</button></header>';
+    if (!state.supps.length) return h + '<div class="card pad"><div class="empty">Aún no has añadido ningún suplemento.<br>Pulsa «+ Añadir» y escribe el nombre, la dosis y cuándo lo tomas.</div><p class="muted small">La app no recomienda dosis: apunta las que tú decidas o te hayan indicado.</p></div>';
+    var td = suppToday(), dem = state.supps.filter(function (sp) { return !sp.paused && sp.freq === 'demanda'; });
+    var k0 = dayKey(Date.now()), log0 = suppLogDay(k0);
+    h += '<section class="card pad"><h2>Hoy</h2>' + (td.length ? '<div class="list">' + td.map(suppRow).join('') + '</div>' : '<p class="muted small">Hoy no tienes tomas programadas.</p>');
+    dem.forEach(function (sp) {
+      var n = Object.keys(log0).filter(function (x) { return x.indexOf(sp.id + '@+') === 0; }).length;
+      h += '<div class="li"><span class="supp-t"><b>' + esc(sp.name) + '</b><span class="muted small">A demanda' + (doseText(sp) ? ' · ' + doseText(sp) : '') + (n ? ' · hoy ' + n + (n === 1 ? ' toma' : ' tomas') : '') + '</span></span><button class="btn sm" data-a="supp-take" data-id="' + esc(sp.id) + '">+ Toma</button></div>';
+    });
+    h += '</section><section class="card pad"><h2>Mis suplementos</h2><div class="list">' + state.supps.map(function (sp) {
+      var when = sp.freq === 'demanda' ? 'A demanda' : (sp.freq === 'dias' ? (sp.days || []).map(function (i) { return WD[i]; }).join(' ') : 'Cada día') + (sp.times && sp.times.length ? ' · ' + suppSlots(sp).join(', ') : '');
+      return '<button class="li supp-li" data-a="supp-edit" data-id="' + esc(sp.id) + '"><span class="supp-t"><b>' + esc(sp.name) + '</b><span class="muted small">' + [doseText(sp), when].filter(Boolean).join(' · ') + '</span></span>' + (sp.paused ? '<span class="chip">En pausa</span>' : '<span class="chip ok">Activo</span>') + '</button>';
+    }).join('') + '</div></section>';
+    // historial: últimos 14 días con algo apuntado o previsto
+    var rows = [];
+    for (var i = 1; i <= 14; i++) {
+      var d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - i);
+      var k = dayKey(d.getTime()), log = suppLogDay(k), names = [], due = 0, done = 0;
+      Object.keys(log).forEach(function (key) { names.push(log[key].n || '?'); });
+      state.supps.forEach(function (sp) { if (suppDue(sp, d) && (sp.created || 0) <= d.getTime()) suppSlots(sp).forEach(function (tm) { due++; if (log[sp.id + '@' + tm]) done++; }); });
+      if (!names.length && !due) continue;
+      rows.push('<div class="li"><span class="supp-t"><b>' + esc(d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' })) + '</b><span class="muted small">' + (names.length ? esc(names.join(', ')) : 'Ninguna toma') + '</span></span>' + (due ? '<span class="right' + (done >= due ? ' ok' : '') + '">' + done + '/' + due + '</span>' : '') + '</div>');
+    }
+    h += '<section class="card pad"><h2>Historial</h2>' + (rows.length ? '<div class="list">' + rows.join('') + '</div>' : '<p class="muted small">Aquí verás las tomas de los últimos 14 días.</p>') + '</section>';
+    return h + '<p class="muted small" style="margin:4px 16px 16px">Tus suplementos son privados: se guardan solo en este iPhone y no se comparten con el grupo.</p>';
+  }
+  function suppModalHtml(m) {
+    var sp = m.sp, unit = sp.unit || 'g';
+    var opts = SUPP_UNITS.map(function (u) { return '<option' + (u === unit ? ' selected' : '') + '>' + esc(u) + '</option>'; }).join('');
+    var h = '<h2>' + (m.isNew ? 'Nuevo suplemento' : 'Editar suplemento') + '</h2>' +
+      '<label>Nombre<input id="sp-name" maxlength="40" autocomplete="off" value="' + esc(sp.name || '') + '" placeholder="Ej.: Creatina"></label>' +
+      '<div class="supp-dose"><label>Dosis<input id="sp-dose" inputmode="decimal" autocomplete="off" value="' + esc(sp.dose != null && sp.dose !== '' ? String(sp.dose).replace('.', ',') : '') + '" placeholder="Opcional"></label><label>Unidad<select id="sp-unit">' + opts + '</select></label></div>' +
+      '<label>Frecuencia<select id="sp-freq" data-f="sp-freq"><option value="diario"' + (m.freq === 'diario' ? ' selected' : '') + '>Cada día</option><option value="dias"' + (m.freq === 'dias' ? ' selected' : '') + '>Algunos días de la semana</option><option value="demanda"' + (m.freq === 'demanda' ? ' selected' : '') + '>A demanda (sin horario)</option></select></label>';
+    if (m.freq === 'dias') h += '<div class="chips">' + WD.map(function (w, i) { return '<button class="chip tog' + (m.days.indexOf(i) >= 0 ? ' on' : '') + '" data-a="sp-day" data-k="' + i + '">' + w + '</button>'; }).join('') + '</div>';
+    if (m.freq !== 'demanda') {
+      h += '<div class="muted small" style="margin-top:12px">Horas de las tomas (opcional; sin hora cuenta como una toma al día)</div>';
+      h += m.times.map(function (tm, i) { return '<div class="supp-time"><input type="time" class="in" data-f="sp-time" data-k="' + i + '" value="' + esc(tm) + '"><button class="btn sm" data-a="sp-time-del" data-k="' + i + '" aria-label="Quitar hora">✕</button></div>'; }).join('');
+      if (m.times.length < 6) h += '<button class="btn sm" data-a="sp-time-add">+ Añadir hora</button>';
+    }
+    h += '<p class="err" id="sp-err" hidden></p><div class="r-btns"><button class="btn" data-a="close">Cancelar</button><button class="btn primary" data-a="supp-save">Guardar</button></div>';
+    if (!m.isNew) h += '<div class="r-btns"><button class="btn" data-a="supp-pause">' + (sp.paused ? 'Reanudar' : 'Pausar') + '</button><button class="btn danger" data-a="supp-del">Borrar</button></div>';
+    return h;
+  }
+  function openSupp(sp, isNew) { sp = JSON.parse(JSON.stringify(sp)); openModal({ type: 'supp', sp: sp, isNew: isNew, freq: sp.freq || 'diario', days: (sp.days || []).slice(), times: (sp.times || []).slice() }); }
+  function suppKeep() { // conserva lo escrito al redibujar la hoja
+    var m = ui.modal; if (!m || m.type !== 'supp') return;
+    var n = $('#sp-name'), d = $('#sp-dose'), u = $('#sp-unit'); if (n) m.sp.name = n.value; if (d) m.sp.dose = d.value; if (u) m.sp.unit = u.value;
+  }
+  function saveSupp() {
+    suppKeep(); var m = ui.modal, sp = m.sp, err = $('#sp-err');
+    function bad(t) { err.textContent = t; err.hidden = false; }
+    var name = String(sp.name || '').trim(); if (!name) return bad('Escribe el nombre.');
+    var ds = String(sp.dose == null ? '' : sp.dose).trim().replace(',', '.'), dose = ds === '' ? null : parseFloat(ds);
+    if (ds !== '' && !(dose > 0)) return bad('La dosis debe ser un número mayor que 0, o déjala vacía.');
+    if (m.freq === 'dias' && !m.days.length) return bad('Elige al menos un día.');
+    var times = m.freq === 'demanda' ? [] : m.times.filter(Boolean).filter(function (t, i, a) { return a.indexOf(t) === i; });
+    var o = m.isNew ? { id: 's-' + uid(), created: Date.now() } : suppById(sp.id); if (!o) { closeModal(); return; }
+    o.name = name; o.dose = dose; o.unit = sp.unit || 'g'; o.freq = m.freq; o.days = m.freq === 'dias' ? m.days.slice().sort() : []; o.times = times; o.paused = !!o.paused;
+    if (m.isNew) state.supps.push(o);
+    save(); closeModal(); render(); toast(m.isNew ? 'Suplemento añadido' : 'Cambios guardados');
+  }
+  function suppTick(key) {
+    var k = dayKey(Date.now()), log = state.suppLog[k] = state.suppLog[k] || {}, sp = suppById(key.split('@')[0]);
+    if (log[key]) delete log[key]; else log[key] = { t: Date.now(), n: sp ? sp.name : '?' };
+    if (!Object.keys(log).length) delete state.suppLog[k];
+    save(); render();
+  }
+
   function seedCard() {
     var bak = state.settings.seedBak;
     if (bak) return '<section class="card pad" id="seed-card"><h2>Pesos de partida</h2><p class="muted small">Quitaste los pesos de partida que venían de serie. Tus entrenos no se han tocado.</p><div class="r-btns"><button class="btn" data-a="seed-undo">Recuperarlos</button></div></section>';
@@ -2458,7 +2577,7 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
       '<section class="card pad"><h2>Fútbol y correr</h2><label class="switch"><span>Cuentan (poco) en la fatiga de piernas</span><input type="checkbox" data-f="actFatigue"' + (state.settings.actFatigue !== false ? ' checked' : '') + '></label></section>' +
       '<section class="card pad"><h2>Instalar en el iPhone</h2><p class="muted small">En Safari: botón Compartir → «Añadir a pantalla de inicio». Así se abre a pantalla completa y los datos se conservan.</p></section>' +
       '<section class="card pad"><h2>Datos iniciales</h2><p class="muted small">Vuelve a cargar tus 17 ejercicios con la última sesión de las capturas. Borra tu historial.</p><button class="btn danger" data-a="reset">Restaurar datos iniciales</button></section>' +
-      '<div class="muted small center" id="ver">Versión 3.3 (gym-v21) · progresión al fallo con doble progresión</div>';
+      '<div class="muted small center" id="ver">Versión 3.3 (gym-v22) · progresión al fallo con doble progresión</div>';
   }
 
   /* ---------- modales ---------- */
@@ -2506,6 +2625,8 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
         (cls.length ? '<div class="card list">' + cls.map(function (a) { return '<button class="li li-btn" data-a="class-edit" data-id="' + esc(a.id) + '"><div class="ex-name">' + classIcon(a.classKind) + ' ' + esc(classTitle(a)) + '</div><div class="muted small">' + a.min + ' min' + (a.rpe ? ' · ' + a.rpe + '/10' : '') + ' ›</div></button>'; }).join('') + '</div>' : '') +
         (gs.length ? '<div class="card list">' + gs.map(function (s) { var n = s.exercises.reduce(function (a, e) { return a + e.sets.length; }, 0); return '<button class="li li-btn" data-a="sess" data-id="' + esc(s.id) + '"><div class="ex-name"><span class="ic-gym">' + MINI_DB + '</span> ' + esc(s.name) + '</div><div class="muted small">' + n + ' series' + (s.prs && s.prs.length ? ' · 🏆 ' + s.prs.length : '') + ' ›</div></button>'; }).join('') + '</div>' : '<p class="muted">Sin gimnasio este día.</p>') +
         '<div class="lbl">Otras actividades</div>' + actButtons(m.day) + '<button class="btn primary wide" data-a="close">Listo</button>';
+    } else if (m.type === 'supp') {
+      h = suppModalHtml(m);
     } else if (m.type === 'clase') {
       h = classModalHtml(m);
     } else if (m.type === 'soc') {
@@ -2586,7 +2707,7 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
   }
   function render() {
     var y = getY();
-    var html = ui.tab === 'hoy' ? (state.active ? viewWorkout() : viewHoy()) : ui.tab === 'cal' ? viewCal() : ui.tab === 'ej' ? viewEj() : ui.tab === 'prog' ? viewProg() : ui.tab === 'perfil' ? viewPerfil() : ui.tab === 'amigos' ? viewAmigos() : viewSet();
+    var html = ui.tab === 'hoy' ? (state.active ? viewWorkout() : viewHoy()) : ui.tab === 'cal' ? viewCal() : ui.tab === 'ej' ? viewEj() : ui.tab === 'prog' ? viewProg() : ui.tab === 'perfil' ? viewPerfil() : ui.tab === 'amigos' ? viewAmigos() : ui.tab === 'supl' ? viewSupl() : viewSet();
     $('#app').innerHTML = html;
     renderTabs(); updateTimer(); syncMute(); updateWprog(); clockSync(); hydratePhotos(); hydrateRemote();
     setY(y);
@@ -2680,7 +2801,7 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
     var d; try { d = JSON.parse(txt); } catch (e) { toast('El texto no es una copia válida'); return; }
     if (!d || d.v !== 1 || !Array.isArray(d.exercises) || !d.routines || !Array.isArray(d.sessions)) { toast('El archivo no es una copia de Gym'); return; }
     ask('Importar copia', 'Esto reemplaza todos los datos actuales (' + d.sessions.length + ' sesiones en la copia).', 'Importar', function () {
-      d.active = null; d.timer = null; d.activities = d.activities || []; d.settings = d.settings || { sound: true, lastBackup: 0, actFatigue: true }; var ps = state.settings; clearTimer(); state = d; state.settings.push = ps.push; state.settings.pushId = ps.pushId; state.settings.social = ps.social || null; unwake(); save(); closeModal(); ui.tab = 'hoy'; render(); toast('Copia importada');
+      d.active = null; d.timer = null; d.activities = d.activities || []; d.supps = d.supps || []; d.suppLog = d.suppLog || {}; d.settings = d.settings || { sound: true, lastBackup: 0, actFatigue: true }; var ps = state.settings; clearTimer(); state = d; state.settings.push = ps.push; state.settings.pushId = ps.pushId; state.settings.social = ps.social || null; unwake(); save(); closeModal(); ui.tab = 'hoy'; render(); toast('Copia importada');
     }, true);
   }
 
@@ -2789,6 +2910,16 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
       case 'class-add': openModal({ type: 'clase', day: el.getAttribute('data-d') }); break;
       case 'class-edit': { var ce = classById(el.getAttribute('data-id')); if (ce) openModal({ type: 'clase', edit: true, id: ce.id, day: ce.day }); break; }
       case 'class-save': saveClass(); break;
+      case 'supp-new': openSupp({ name: '', unit: 'g', freq: 'diario', times: [] }, true); break;
+      case 'supp-edit': { var spe = suppById(el.getAttribute('data-id')); if (spe) openSupp(spe, false); break; }
+      case 'supp-save': saveSupp(); break;
+      case 'supp-tick': suppTick(el.getAttribute('data-k')); break;
+      case 'supp-take': { var spt = suppById(el.getAttribute('data-id')); if (spt) { var kd = dayKey(Date.now()), lg = state.suppLog[kd] = state.suppLog[kd] || {}; lg[spt.id + '@+' + Date.now()] = { t: Date.now(), n: spt.name }; save(); render(); toast('Toma apuntada: ' + spt.name); } break; }
+      case 'sp-day': { suppKeep(); var di2 = +el.getAttribute('data-k'), dd = ui.modal.days, ix = dd.indexOf(di2); if (ix >= 0) dd.splice(ix, 1); else dd.push(di2); renderModal(); break; }
+      case 'sp-time-add': { suppKeep(); ui.modal.times.push(''); renderModal(); var ti = document.querySelectorAll('#modal [data-f=sp-time]'); if (ti.length) ti[ti.length - 1].focus(); break; }
+      case 'sp-time-del': { suppKeep(); ui.modal.times.splice(+el.getAttribute('data-k'), 1); renderModal(); break; }
+      case 'supp-pause': { var spp = suppById(ui.modal.sp.id); if (spp) { spp.paused = !spp.paused; save(); closeModal(); render(); toast(spp.paused ? spp.name + ' en pausa' : spp.name + ' activo de nuevo'); } break; }
+      case 'supp-del': { var spd = suppById(ui.modal.sp.id); if (!spd) { closeModal(); break; } var pos = state.supps.indexOf(spd); state.supps.splice(pos, 1); save(); closeModal(); render(); toast(spd.name + ' borrado', function () { state.supps.splice(Math.min(pos, state.supps.length), 0, spd); save(); render(); }); break; }
       case 'class-del': { var cid = el.getAttribute('data-id'), ca = classById(cid); if (!ca) { closeModal(); break; } ca._gone = 1; var di = state.activities.indexOf(ca); state.activities.splice(di, 1); save(); closeModal(); render(); toast('Clase borrada', function () { state.activities.splice(Math.min(di, state.activities.length), 0, ca); delete ca._gone; save(); render(); }); break; }
       case 'an-apply': {
         var sx = sessById(el.getAttribute('data-sid')), it = sx && sx.analysis && sx.analysis.items[parseInt(el.getAttribute('data-k'), 10)];
@@ -3086,6 +3217,7 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
       s[f] = t.value; if (s.done) { s.done = false; var row = t.closest('.set'); if (row) row.classList.remove('done'); save(); updateWprog(); }
       else saveSoon();
     } else if (f === 'q') { ui.query = t.value; $('#ex-list').innerHTML = exListHtml(); }
+    else if (f === 'sp-time' && ui.modal && ui.modal.type === 'supp') { ui.modal.times[+t.getAttribute('data-k')] = t.value; }
     else if (f === 'pq') { ui.modal.q = t.value; $('#pick-list').innerHTML = pickList(); }
     else if (f === 'rname' && ui.modal && state.routines[ui.modal.key]) { state.routines[ui.modal.key].name = t.value.trim() || 'Rutina'; save(); render(); }
   });
@@ -3097,6 +3229,8 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
     else if (t.getAttribute && t.getAttribute('data-f') === 'actFatigue') { state.settings.actFatigue = t.checked; save(); }
     else if (t.getAttribute && t.getAttribute('data-f') === 'photo') { if (t.files && t.files.length) addPhotos(t.getAttribute('data-sid'), t.files); t.value = ''; }
     else if (t.id === 'file' && t.files && t.files[0]) { var rd = new FileReader(); rd.onload = function () { importText(String(rd.result)); }; rd.readAsText(t.files[0]); t.value = ''; }
+    else if (t.getAttribute && t.getAttribute('data-f') === 'sp-freq' && ui.modal && ui.modal.type === 'supp') { suppKeep(); ui.modal.freq = t.value; renderModal(); }
+    else if (t.getAttribute && t.getAttribute('data-f') === 'sp-time' && ui.modal && ui.modal.type === 'supp') { ui.modal.times[+t.getAttribute('data-k')] = t.value; }
     else if (t.getAttribute && t.getAttribute('data-f') === 'c-kind' && ui.modal && ui.modal.type === 'clase') { ui.modal.kind = t.value; renderModal(); }
     else if (t.id === 'f-equip' && ui.modal && ui.modal.type === 'exedit' && ui.modal.isNew && !ui.modal.stepTouched) { $('#f-step').value = fmt(STEP_DEFAULT[t.value] || 2.5); $('#f-unit').value = 'kg'; }
   });
