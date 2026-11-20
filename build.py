@@ -1,5 +1,5 @@
 import os, json
-CACHE = 'gym-v22'  # súbelo cuando cambie algo que el iPhone deba recargar (se muestra en Ajustes)
+CACHE = 'gym-v23'  # súbelo cuando cambie algo que el iPhone deba recargar (se muestra en Ajustes)
 from PIL import Image, ImageDraw
 root = os.path.dirname(os.path.abspath(__file__))
 src, dist = os.path.join(root, 'src'), root  # la web se genera en la raíz: GitHub Pages la sirve desde ahí
@@ -11,7 +11,8 @@ for key, f in (('{{CSS}}', 'style.css'), ('{{ENGINE}}', 'engine.js'), ('{{SEED}}
 # Servidor de avisos (push/): URL del Worker desplegado y clave pública VAPID
 PUSH_URL = 'https://gym-push.secundariaxdx.workers.dev'
 PUSH_KEY = 'BBlqNdvPtv93oxTx8Zr10Yi5ZeNHb3uGzCIo_174AAwCttp-vr9gp0KIeTGiJwDEUX5ZqSUgGg73nZD1aUXJEyU'
-html = html.replace('{{VER}}', CACHE).replace('{{PUSH_URL}}', PUSH_URL).replace('{{PUSH_KEY}}', PUSH_KEY)
+EXIMG = sorted(f[:-6] for f in os.listdir(os.path.join(root, 'img', 'ex')) if f.endswith('-t.jpg'))  # ejercicios con foto
+html = html.replace('{{EXIMG}}', json.dumps(EXIMG)).replace('{{VER}}', CACHE).replace('{{PUSH_URL}}', PUSH_URL).replace('{{PUSH_KEY}}', PUSH_KEY)
 open(os.path.join(dist, 'index.html'), 'w', encoding='utf-8').write(html)
 
 manifest = {
@@ -29,7 +30,7 @@ json.dump(manifest, open(os.path.join(dist, 'manifest.webmanifest'), 'w'), inden
 sw = """const CACHE = '%%CACHE%%';
 const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting())); });
-self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE && k !== 'gym-meta').map(k => caches.delete(k)))).then(() => self.clients.claim())); });
+self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE && k !== 'gym-meta' && k !== 'gym-img').map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 // Caché primero: abre al instante aunque la señal sea mala. Se actualiza en segundo plano
 // y la versión nueva se ve la siguiente vez que abres la app.
 // Aviso de fin de descanso. El servidor manda un push vacío; el texto (siguiente serie)
@@ -51,6 +52,11 @@ self.addEventListener('notificationclick', e => {
 });
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  // Fotos de ejercicios: se descargan la primera vez que se ven y se guardan aparte (no cambian entre versiones)
+  if (e.request.url.includes('/img/ex/')) {
+    e.respondWith(caches.open('gym-img').then(async c => (await c.match(e.request)) || fetch(e.request).then(r => { if (r && r.ok) c.put(e.request, r.clone()); return r; })));
+    return;
+  }
   e.respondWith(caches.open(CACHE).then(async c => {
     const hit = await c.match(e.request);
     const net = fetch(e.request.url, { cache: 'no-cache' }).then(r => { if (r && r.ok) c.put(e.request, r.clone()); return r; }).catch(() => null);

@@ -1,0 +1,3 @@
+Fotos de ejercicios: Free Exercise DB (github.com/yuhonas/free-exercise-db), dominio público (Unlicense).
+Por ejercicio: <id>.jpg (posición final), <id>-0.jpg (posición inicial), <id>-t.jpg (miniatura 144 px).
+fuente.json = id de la app -> id del banco. Para añadir una foto: deja los 3 archivos con el id del ejercicio y ejecuta build.py.

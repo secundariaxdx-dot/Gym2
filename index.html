@@ -534,6 +534,27 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
 .supp-empty { width: 100%; text-align: left; }
 .li .right.ok { color: var(--accent); font-weight: 600; }
 
+/* v3.6 imágenes de ejercicios */
+.item.wi { display: flex; align-items: center; gap: 12px; padding: 10px 14px 10px 10px; }
+.wi-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wi-t .ex-name, .wi-t .small { display: block; }
+.item.lib.wi .ex-name::before { content: none; }
+.item.lib.wi .exi::after { content: '+'; position: absolute; right: -4px; bottom: -4px; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); color: var(--on-accent); font-weight: 800; font-size: 14px; line-height: 18px; text-align: center; }
+.exi { position: relative; flex: none; width: 52px; height: 52px; border-radius: 12px; background: var(--input); display: grid; place-items: center; }
+.exi-img { width: 100%; height: 100%; object-fit: cover; border-radius: 12px; display: block; }
+.exi-fig { height: 46px; width: auto; }
+.exh { margin: 4px 0 8px; }
+.exh-row { display: grid; grid-auto-flow: column; grid-auto-columns: 86%; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.exh-row::-webkit-scrollbar { display: none; }
+.exh-row figure { scroll-snap-align: start; }
+.exh-row figure { margin: 0; position: relative; }
+.exh-img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 12px; background: var(--input); display: block; }
+.exh-row figcaption { position: absolute; left: 8px; bottom: 8px; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: rgba(0, 0, 0, .55); color: #fff; }
+.exh-fig { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.exh-svg { height: 92px; width: auto; flex: none; }
+.exi-fig .bm-m.on, .exh-svg .bm-m.on { fill: var(--accent); }
+@media (min-width: 700px) { .exh-row { grid-auto-columns: calc(50% - 4px); } }
+
 </style>
 </head>
 <body>
@@ -1683,7 +1704,7 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
       h += '<h3 class="sec">Mis ejercicios · ' + mine.length + '</h3>' + group(mine, function (e) {
         var plan = E.planSets(e, E.reference(e, state.sessions));
         var nx = plan.length && plan[0].w ? plan.map(function (p) { return fmt(p.w) + '×' + p.r; }).join(' · ') : 'sin historial';
-        return '<button class="card item mine" data-a="edit-ex" data-id="' + esc(e.id) + '"><div class="ex-name">' + esc(e.name) + '</div><div class="muted small">Próximo: ' + esc(nx) + '</div></button>';
+        return '<button class="card item mine wi" data-a="edit-ex" data-id="' + esc(e.id) + '">' + exThumb(e) + '<span class="wi-t"><span class="ex-name">' + esc(e.name) + '</span><span class="muted small">Próximo: ' + esc(nx) + '</span></span></button>';
       });
     }
     var libShown = ui.libOpen || !!q || !!fm || !!fe;
@@ -1691,7 +1712,7 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
     else if (lib.length) {
       h += (q || fm || fe ? '<h3 class="sec">Biblioteca · ' + lib.length + '</h3>' : '<button class="btn lib-tog" data-a="lib-tog" aria-expanded="true"><span>Biblioteca · ' + lib.length + ' ejercicios</span><span>Ocultar ▴</span></button>') +
         '<div class="muted small pad0">Toca uno para añadirlo a tus ejercicios.</div>' + group(lib, function (e) {
-        return '<button class="card item lib" data-a="edit-lib" data-id="' + esc(e.id) + '"><div class="ex-name">' + esc(e.name) + '</div><div class="muted small">' + esc(EQUIP[e.equip]) + '</div></button>';
+        return '<button class="card item lib wi" data-a="edit-lib" data-id="' + esc(e.id) + '">' + exThumb(e) + '<span class="wi-t"><span class="ex-name">' + esc(e.name) + '</span><span class="muted small">' + esc(EQUIP[e.equip]) + '</span></span></button>';
       });
     }
     return h;
@@ -2007,6 +2028,28 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
     ['Isquios', 'M6.5 236 C15 242 29 240.5 37.5 231 C38 246 36.5 264 34.5 276 C33.5 281 32.5 285 31.5 287.5 C26 291 17.5 291 13 287.5 C11.5 272 8.5 252 6.5 236 Z'],
     ['Gemelos', 'M11.5 300 C17 296.5 29 296.5 33.5 300.5 C36 314 35.5 330 31.5 344 C29.5 350 27 354 23.5 356.5 L17.5 356.5 C14 353 11.8 345 11 333 C10.6 321 10.8 310 11.5 300 Z']
   ];
+  /* ---------- imágenes de ejercicios (img/ex: fotos de dominio público; si no hay, figura con los músculos) ---------- */
+  var EXIMG = {}; (["abductor", "aductor", "aper-inv", "aper-manc", "aper-manc-inc", "bulgara", "cruce-alto", "cruce-bajo", "cruce-medio", "crunch", "crunch-dec", "crunch-polea", "crunch-suelo", "curl-barra", "curl-barra-z", "curl-bayes", "curl-conc", "curl-cuerda", "curl-fem", "curl-fem-pie", "curl-fem-sent", "curl-inc", "curl-inverso", "curl-manc", "curl-maq", "curl-martillo", "curl-muneca", "curl-polea", "curl-pred", "curl-scott", "delt-ant", "dominadas", "dominadas-supinas", "elev-front", "elev-lat", "elev-lat-pie", "elev-lat-polea", "elev-piernas-colg", "elev-piernas-silla", "encog-barra", "encog-manc", "encog-maq", "ext-rod", "face-pull", "flexiones", "fondos", "fondos-banco", "fondos-paralelas", "goblet", "hack", "hip-thrust", "hip-thrust-barra", "hiperext", "jalon", "jalon-neutro", "jalon-polea", "jalon-supino", "jalon-uni", "lenador", "martillo", "pajaros", "patada-glut-polea", "patada-tri", "pec-deck", "peso-muerto", "prensa", "prensa-horiz", "press-arnold", "press-banca", "press-banca-dec", "press-banca-inc", "press-cable", "press-cerrado", "press-dec-maq", "press-frances", "press-hombro-manc", "press-hombro-maq", "press-hombro-smith", "press-inc", "press-manc", "press-manc-inc", "press-militar", "press-pecho-maq", "press-smith", "press-smith-inc", "pullover", "pullover-cuerda", "pullover-manc", "rdl-barra", "rdl-manc", "rear-delt-maq", "remo", "remo-alto-maq", "remo-barra", "remo-manc", "remo-menton", "remo-pecho-apoyado", "remo-polea-ancho", "remo-polea-baja", "remo-t", "remo-uni-maq", "rueda", "sentadilla", "sentadilla-front", "sentadilla-smith", "step-up", "talones", "talones-prensa", "talones-sent", "talones-smith", "tri-barra", "tri-cuerda", "tri-manc-overhead", "tri-maq", "tri-overhead", "tri-uni", "tri-v", "zancadas"]).forEach(function (id) { EXIMG[id] = 1; });
+  var BACK_M = { Dorsales: 1, Espalda: 1, Trapecio: 1, Lumbares: 1, Isquios: 1, 'Glúteos': 1, Gemelos: 1, 'Tríceps': 1 };
+  function exFig(e, cls) { // figura de un solo lado (delante o detrás según el músculo principal)
+    var w = {}; w[e.muscle] = 1; (e.sec || []).forEach(function (m) { if (!w[m]) w[m] = 0.45; });
+    var back = BACK_M[e.muscle];
+    return '<svg class="' + cls + '" viewBox="-96 -2 192 404" role="img" aria-label="' + esc(e.muscle || 'Ejercicio') + '">' + bodyFig(back ? BM_BACK : BM_FRONT, w) + '</svg>';
+  }
+  function exThumb(e) {
+    return '<span class="exi" data-ex="' + esc(e.id) + '">' + (EXIMG[e.id] ? '<img class="exi-img" loading="lazy" decoding="async" alt="" src="img/ex/' + esc(e.id) + '-t.jpg">' : exFig(e, 'exi-fig')) + '</span>';
+  }
+  function exHero(e) { // ficha: posición inicial y final (deslizable) + músculos
+    var h = '<div class="exh">';
+    if (EXIMG[e.id]) h += '<div class="exh-row"><figure><img class="exh-img" decoding="async" alt="' + esc(e.name) + ': posición inicial" src="img/ex/' + esc(e.id) + '-0.jpg"><figcaption>Inicio</figcaption></figure><figure><img class="exh-img" decoding="async" alt="' + esc(e.name) + ': posición final" src="img/ex/' + esc(e.id) + '.jpg"><figcaption>Final</figcaption></figure></div>';
+    return h + '<div class="exh-fig">' + exFig(e, 'exh-svg') + '<div class="small muted"><b>' + esc(e.muscle || '') + '</b>' + ((e.sec || []).length ? '<br>También: ' + esc(e.sec.join(', ')) : '') + '</div></div></div>';
+  }
+  // si una imagen no carga (sin conexión la primera vez, o falta), se pone la figura
+  document.addEventListener('error', function (ev) {
+    var t = ev.target; if (!t || t.tagName !== 'IMG') return;
+    if (t.classList.contains('exi-img')) { var sp = t.parentNode, e = exById(sp.getAttribute('data-ex')) || libById(sp.getAttribute('data-ex')); sp.innerHTML = e ? exFig(e, 'exi-fig') : ''; }
+    else if (t.classList.contains('exh-img')) { var row = t.closest('.exh-row'); if (row) row.remove(); }
+  }, true);
   function bodyFig(parts, w) {
     function both(d, attr) { return '<path' + attr + ' d="' + d + '"/><path' + attr + ' d="' + d + '" transform="scale(-1 1)"/>'; }
     var g = both(BM_HEAD, ' class="bm-base"') + both(BM_BODY, ' class="bm-base"');
@@ -2577,7 +2620,7 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
       '<section class="card pad"><h2>Fútbol y correr</h2><label class="switch"><span>Cuentan (poco) en la fatiga de piernas</span><input type="checkbox" data-f="actFatigue"' + (state.settings.actFatigue !== false ? ' checked' : '') + '></label></section>' +
       '<section class="card pad"><h2>Instalar en el iPhone</h2><p class="muted small">En Safari: botón Compartir → «Añadir a pantalla de inicio». Así se abre a pantalla completa y los datos se conservan.</p></section>' +
       '<section class="card pad"><h2>Datos iniciales</h2><p class="muted small">Vuelve a cargar tus 17 ejercicios con la última sesión de las capturas. Borra tu historial.</p><button class="btn danger" data-a="reset">Restaurar datos iniciales</button></section>' +
-      '<div class="muted small center" id="ver">Versión 3.3 (gym-v22) · progresión al fallo con doble progresión</div>';
+      '<div class="muted small center" id="ver">Versión 3.3 (gym-v23) · progresión al fallo con doble progresión</div>';
   }
 
   /* ---------- modales ---------- */
@@ -2591,7 +2634,7 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
     } else if (m.type === 'exedit') {
       var ex = m.ex;
       var stepShown = ex.stepUnit === 'lb' ? Math.round(ex.step / LB * 10) / 10 : ex.step;
-      h = '<h2>' + (m.isNew ? 'Nuevo ejercicio' : 'Ajustes del ejercicio') + '</h2>' +
+      h = '<h2>' + (m.isNew ? 'Nuevo ejercicio' : 'Ajustes del ejercicio') + '</h2>' + (ex.name ? exHero(ex) : '') +
         '<label>Nombre<input id="f-name" value="' + esc(ex.name) + '" autocomplete="off"></label>' +
         '<label>Músculo principal<select id="f-muscle">' + MUSCLES.map(function (x) { return '<option' + (x === ex.muscle ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></label>' +
         '<div class="lbl">Músculos secundarios</div><div class="chips" id="f-sec">' + MUSCLES.map(function (x) { return '<button type="button" class="chip tog' + (m.sec.indexOf(x) >= 0 ? ' on' : '') + '" data-a="sec" data-m="' + x + '">' + x + '</button>'; }).join('') + '</div>' +
@@ -2655,8 +2698,8 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
     var lib = libNotMine().filter(function (e) { return !skip[e.id] && matches(e, q, m.fm, m.fe); });
     if (!mine.length && !lib.length) return '<div class="empty">Sin resultados. Prueba a quitar filtros o crea un ejercicio nuevo.</div>';
     var h = '';
-    if (mine.length) h += '<div class="grp">Mis ejercicios</div>' + mine.map(function (e) { return '<button class="card item mine" data-a="pick" data-id="' + esc(e.id) + '"><div class="ex-name">' + esc(e.name) + '</div><div class="muted small">' + esc(e.muscle) + ' · ' + esc(EQUIP[e.equip] || '') + '</div></button>'; }).join('');
-    if (lib.length) h += '<div class="grp">Biblioteca</div>' + lib.map(function (e) { return '<button class="card item lib" data-a="pick" data-id="' + esc(e.id) + '"><div class="ex-name">' + esc(e.name) + '</div><div class="muted small">' + esc(e.muscle) + ' · ' + esc(EQUIP[e.equip] || '') + '</div></button>'; }).join('');
+    if (mine.length) h += '<div class="grp">Mis ejercicios</div>' + mine.map(function (e) { return '<button class="card item mine wi" data-a="pick" data-id="' + esc(e.id) + '">' + exThumb(e) + '<span class="wi-t"><span class="ex-name">' + esc(e.name) + '</span><span class="muted small">' + esc(e.muscle) + ' · ' + esc(EQUIP[e.equip] || '') + '</span></span></button>'; }).join('');
+    if (lib.length) h += '<div class="grp">Biblioteca</div>' + lib.map(function (e) { return '<button class="card item lib wi" data-a="pick" data-id="' + esc(e.id) + '">' + exThumb(e) + '<span class="wi-t"><span class="ex-name">' + esc(e.name) + '</span><span class="muted small">' + esc(e.muscle) + ' · ' + esc(EQUIP[e.equip] || '') + '</span></span></button>'; }).join('');
     return h;
   }
   function renderModal() {

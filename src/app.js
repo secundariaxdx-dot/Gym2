@@ -645,7 +645,7 @@
       h += '<h3 class="sec">Mis ejercicios · ' + mine.length + '</h3>' + group(mine, function (e) {
         var plan = E.planSets(e, E.reference(e, state.sessions));
         var nx = plan.length && plan[0].w ? plan.map(function (p) { return fmt(p.w) + '×' + p.r; }).join(' · ') : 'sin historial';
-        return '<button class="card item mine" data-a="edit-ex" data-id="' + esc(e.id) + '"><div class="ex-name">' + esc(e.name) + '</div><div class="muted small">Próximo: ' + esc(nx) + '</div></button>';
+        return '<button class="card item mine wi" data-a="edit-ex" data-id="' + esc(e.id) + '">' + exThumb(e) + '<span class="wi-t"><span class="ex-name">' + esc(e.name) + '</span><span class="muted small">Próximo: ' + esc(nx) + '</span></span></button>';
       });
     }
     var libShown = ui.libOpen || !!q || !!fm || !!fe;
@@ -653,7 +653,7 @@
     else if (lib.length) {
       h += (q || fm || fe ? '<h3 class="sec">Biblioteca · ' + lib.length + '</h3>' : '<button class="btn lib-tog" data-a="lib-tog" aria-expanded="true"><span>Biblioteca · ' + lib.length + ' ejercicios</span><span>Ocultar ▴</span></button>') +
         '<div class="muted small pad0">Toca uno para añadirlo a tus ejercicios.</div>' + group(lib, function (e) {
-        return '<button class="card item lib" data-a="edit-lib" data-id="' + esc(e.id) + '"><div class="ex-name">' + esc(e.name) + '</div><div class="muted small">' + esc(EQUIP[e.equip]) + '</div></button>';
+        return '<button class="card item lib wi" data-a="edit-lib" data-id="' + esc(e.id) + '">' + exThumb(e) + '<span class="wi-t"><span class="ex-name">' + esc(e.name) + '</span><span class="muted small">' + esc(EQUIP[e.equip]) + '</span></span></button>';
       });
     }
     return h;
@@ -969,6 +969,28 @@
     ['Isquios', 'M6.5 236 C15 242 29 240.5 37.5 231 C38 246 36.5 264 34.5 276 C33.5 281 32.5 285 31.5 287.5 C26 291 17.5 291 13 287.5 C11.5 272 8.5 252 6.5 236 Z'],
     ['Gemelos', 'M11.5 300 C17 296.5 29 296.5 33.5 300.5 C36 314 35.5 330 31.5 344 C29.5 350 27 354 23.5 356.5 L17.5 356.5 C14 353 11.8 345 11 333 C10.6 321 10.8 310 11.5 300 Z']
   ];
+  /* ---------- imágenes de ejercicios (img/ex: fotos de dominio público; si no hay, figura con los músculos) ---------- */
+  var EXIMG = {}; ({{EXIMG}}).forEach(function (id) { EXIMG[id] = 1; });
+  var BACK_M = { Dorsales: 1, Espalda: 1, Trapecio: 1, Lumbares: 1, Isquios: 1, 'Glúteos': 1, Gemelos: 1, 'Tríceps': 1 };
+  function exFig(e, cls) { // figura de un solo lado (delante o detrás según el músculo principal)
+    var w = {}; w[e.muscle] = 1; (e.sec || []).forEach(function (m) { if (!w[m]) w[m] = 0.45; });
+    var back = BACK_M[e.muscle];
+    return '<svg class="' + cls + '" viewBox="-96 -2 192 404" role="img" aria-label="' + esc(e.muscle || 'Ejercicio') + '">' + bodyFig(back ? BM_BACK : BM_FRONT, w) + '</svg>';
+  }
+  function exThumb(e) {
+    return '<span class="exi" data-ex="' + esc(e.id) + '">' + (EXIMG[e.id] ? '<img class="exi-img" loading="lazy" decoding="async" alt="" src="img/ex/' + esc(e.id) + '-t.jpg">' : exFig(e, 'exi-fig')) + '</span>';
+  }
+  function exHero(e) { // ficha: posición inicial y final (deslizable) + músculos
+    var h = '<div class="exh">';
+    if (EXIMG[e.id]) h += '<div class="exh-row"><figure><img class="exh-img" decoding="async" alt="' + esc(e.name) + ': posición inicial" src="img/ex/' + esc(e.id) + '-0.jpg"><figcaption>Inicio</figcaption></figure><figure><img class="exh-img" decoding="async" alt="' + esc(e.name) + ': posición final" src="img/ex/' + esc(e.id) + '.jpg"><figcaption>Final</figcaption></figure></div>';
+    return h + '<div class="exh-fig">' + exFig(e, 'exh-svg') + '<div class="small muted"><b>' + esc(e.muscle || '') + '</b>' + ((e.sec || []).length ? '<br>También: ' + esc(e.sec.join(', ')) : '') + '</div></div></div>';
+  }
+  // si una imagen no carga (sin conexión la primera vez, o falta), se pone la figura
+  document.addEventListener('error', function (ev) {
+    var t = ev.target; if (!t || t.tagName !== 'IMG') return;
+    if (t.classList.contains('exi-img')) { var sp = t.parentNode, e = exById(sp.getAttribute('data-ex')) || libById(sp.getAttribute('data-ex')); sp.innerHTML = e ? exFig(e, 'exi-fig') : ''; }
+    else if (t.classList.contains('exh-img')) { var row = t.closest('.exh-row'); if (row) row.remove(); }
+  }, true);
   function bodyFig(parts, w) {
     function both(d, attr) { return '<path' + attr + ' d="' + d + '"/><path' + attr + ' d="' + d + '" transform="scale(-1 1)"/>'; }
     var g = both(BM_HEAD, ' class="bm-base"') + both(BM_BODY, ' class="bm-base"');
@@ -1553,7 +1575,7 @@
     } else if (m.type === 'exedit') {
       var ex = m.ex;
       var stepShown = ex.stepUnit === 'lb' ? Math.round(ex.step / LB * 10) / 10 : ex.step;
-      h = '<h2>' + (m.isNew ? 'Nuevo ejercicio' : 'Ajustes del ejercicio') + '</h2>' +
+      h = '<h2>' + (m.isNew ? 'Nuevo ejercicio' : 'Ajustes del ejercicio') + '</h2>' + (ex.name ? exHero(ex) : '') +
         '<label>Nombre<input id="f-name" value="' + esc(ex.name) + '" autocomplete="off"></label>' +
         '<label>Músculo principal<select id="f-muscle">' + MUSCLES.map(function (x) { return '<option' + (x === ex.muscle ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></label>' +
         '<div class="lbl">Músculos secundarios</div><div class="chips" id="f-sec">' + MUSCLES.map(function (x) { return '<button type="button" class="chip tog' + (m.sec.indexOf(x) >= 0 ? ' on' : '') + '" data-a="sec" data-m="' + x + '">' + x + '</button>'; }).join('') + '</div>' +
@@ -1617,8 +1639,8 @@
     var lib = libNotMine().filter(function (e) { return !skip[e.id] && matches(e, q, m.fm, m.fe); });
     if (!mine.length && !lib.length) return '<div class="empty">Sin resultados. Prueba a quitar filtros o crea un ejercicio nuevo.</div>';
     var h = '';
-    if (mine.length) h += '<div class="grp">Mis ejercicios</div>' + mine.map(function (e) { return '<button class="card item mine" data-a="pick" data-id="' + esc(e.id) + '"><div class="ex-name">' + esc(e.name) + '</div><div class="muted small">' + esc(e.muscle) + ' · ' + esc(EQUIP[e.equip] || '') + '</div></button>'; }).join('');
-    if (lib.length) h += '<div class="grp">Biblioteca</div>' + lib.map(function (e) { return '<button class="card item lib" data-a="pick" data-id="' + esc(e.id) + '"><div class="ex-name">' + esc(e.name) + '</div><div class="muted small">' + esc(e.muscle) + ' · ' + esc(EQUIP[e.equip] || '') + '</div></button>'; }).join('');
+    if (mine.length) h += '<div class="grp">Mis ejercicios</div>' + mine.map(function (e) { return '<button class="card item mine wi" data-a="pick" data-id="' + esc(e.id) + '">' + exThumb(e) + '<span class="wi-t"><span class="ex-name">' + esc(e.name) + '</span><span class="muted small">' + esc(e.muscle) + ' · ' + esc(EQUIP[e.equip] || '') + '</span></span></button>'; }).join('');
+    if (lib.length) h += '<div class="grp">Biblioteca</div>' + lib.map(function (e) { return '<button class="card item lib wi" data-a="pick" data-id="' + esc(e.id) + '">' + exThumb(e) + '<span class="wi-t"><span class="ex-name">' + esc(e.name) + '</span><span class="muted small">' + esc(e.muscle) + ' · ' + esc(EQUIP[e.equip] || '') + '</span></span></button>'; }).join('');
     return h;
   }
   function renderModal() {
