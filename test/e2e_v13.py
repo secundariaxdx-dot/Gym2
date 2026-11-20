@@ -1,4 +1,5 @@
 import subprocess, sys, time, os
+import _pau  # noqa: simula el iPhone de Pau (pesos de partida)
 from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 srv = subprocess.Popen([sys.executable, '-m', 'http.server', '8768', '-d', ROOT], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

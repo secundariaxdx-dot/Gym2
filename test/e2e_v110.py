@@ -1,6 +1,7 @@
 # v1.10: franja compacta, biblioteca plegada, "1 día", ir al siguiente ejercicio, deshacer,
 # reordenar ejercicios, vibración, reloj solo cuando hace falta y guardado aplazado.
 import subprocess, sys, time, os, json
+import _pau  # noqa: simula el iPhone de Pau (pesos de partida)
 from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 srv = subprocess.Popen([sys.executable, '-m', 'http.server', '8773', '-d', ROOT], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

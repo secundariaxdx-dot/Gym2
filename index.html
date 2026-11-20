@@ -1050,7 +1050,7 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
   var memoryOnly = false;
   function fresh() {
     return {
-      v: 1, exercises: JSON.parse(JSON.stringify(SEED.exercises)), routines: JSON.parse(JSON.stringify(SEED.routines)),
+      v: 1, exercises: JSON.parse(JSON.stringify(SEED.exercises)).map(function (e) { delete e.baseline; return e; }), routines: JSON.parse(JSON.stringify(SEED.routines)),
       sessions: [], activities: [], routineOrder: ['push', 'pull', 'legs'], active: null, settings: { sound: true, lastBackup: 0, actFatigue: true }, created: Date.now()
     };
   }
@@ -1076,6 +1076,11 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
   function fatigueSessions() { return state.settings.actFatigue === false ? state.sessions : state.sessions.concat(E.activitiesAsSessions(state.activities)); }
   function dayKey(t) { var d = new Date(t); return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate()); }
   function exMap() { var m = {}; state.exercises.forEach(function (e) { m[e.id] = e; }); return m; }
+  // Pesos de partida de Pau (seed.js): las instalaciones nuevas empiezan sin ellos; quien los heredó puede quitarlos en Ajustes
+  function seedLeft() {
+    var m = {}; SEED.exercises.forEach(function (e) { if (e.baseline) m[e.id] = JSON.stringify(e.baseline.sets); });
+    return state.exercises.filter(function (e) { return e.baseline && m[e.id] && JSON.stringify(e.baseline.sets) === m[e.id]; });
+  }
   function exById(id) { for (var i = 0; i < state.exercises.length; i++) if (state.exercises[i].id === id) return state.exercises[i]; return null; }
 
   /* ---------- entreno en curso ---------- */
@@ -2432,6 +2437,14 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
     }).join('') + '</div>';
     return h;
   }
+  function seedCard() {
+    var bak = state.settings.seedBak;
+    if (bak) return '<section class="card pad" id="seed-card"><h2>Pesos de partida</h2><p class="muted small">Quitaste los pesos de partida que venían de serie. Tus entrenos no se han tocado.</p><div class="r-btns"><button class="btn" data-a="seed-undo">Recuperarlos</button></div></section>';
+    if (state.settings.seedMine) return '';
+    var n = seedLeft().length; if (!n) return '';
+    return '<section class="card pad" id="seed-card"><h2>Pesos de partida</h2><p class="muted small">' + n + ' ejercicios tienen todavía los pesos de partida con los que se creó la app (son los de Pau). Si no eres Pau, quítalos y la app te propondrá pesos a partir de tus propios entrenos. Tus entrenos guardados no se tocan.</p>' +
+      '<div class="r-btns"><button class="btn primary" data-a="seed-clear">Quitar (no son míos)</button><button class="btn" data-a="seed-mine">Son míos</button></div></section>';
+  }
   function viewSet() {
     var lb = state.settings.lastBackup;
     return '<header class="top"><div><button class="back" data-a="tab" data-t="perfil">‹ Perfil</button><h1>Ajustes</h1></div></header>' +
@@ -2439,12 +2452,13 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
       '<div class="r-btns"><button class="btn primary" data-a="backup">Guardar copia</button><button class="btn" data-a="copy">Copiar texto</button></div>' +
       '<div class="r-btns"><button class="btn" data-a="import-file">Importar archivo</button><button class="btn" data-a="import-paste">Pegar texto</button></div>' +
       '<input id="file" type="file" accept="application/json,.json" hidden><p class="muted small" style="margin-top:10px">Las fotos de los entrenos se guardan muy reducidas (unos 60 KB cada una) y solo en este iPhone: no van dentro de la copia.</p></section>' +
+      seedCard() +
       '<section class="card pad"><h2>Descanso</h2><label class="switch"><span>Sonidos (serie hecha y fin del descanso)</span><input type="checkbox" data-f="sound"' + (state.settings.sound !== false ? ' checked' : '') + '></label></section>' +
       pushSection() +
       '<section class="card pad"><h2>Fútbol y correr</h2><label class="switch"><span>Cuentan (poco) en la fatiga de piernas</span><input type="checkbox" data-f="actFatigue"' + (state.settings.actFatigue !== false ? ' checked' : '') + '></label></section>' +
       '<section class="card pad"><h2>Instalar en el iPhone</h2><p class="muted small">En Safari: botón Compartir → «Añadir a pantalla de inicio». Así se abre a pantalla completa y los datos se conservan.</p></section>' +
       '<section class="card pad"><h2>Datos iniciales</h2><p class="muted small">Vuelve a cargar tus 17 ejercicios con la última sesión de las capturas. Borra tu historial.</p><button class="btn danger" data-a="reset">Restaurar datos iniciales</button></section>' +
-      '<div class="muted small center" id="ver">Versión 3.3 (gym-v20) · progresión al fallo con doble progresión</div>';
+      '<div class="muted small center" id="ver">Versión 3.3 (gym-v21) · progresión al fallo con doble progresión</div>';
   }
 
   /* ---------- modales ---------- */
@@ -2647,7 +2661,8 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
     if (prs.length) setTimeout(function () { confetti(); fanfare(); }, 250);
   }
 
-  function exportData() { return JSON.stringify(state); }
+  // La copia no lleva la cuenta del grupo (token y código) ni el aviso: al importar se conservan los del propio iPhone
+  function exportData() { var st = Object.assign({}, state.settings); delete st.social; delete st.push; delete st.pushId; return JSON.stringify(Object.assign({}, state, { settings: st })); }
   function backup() {
     var txt = exportData(), name = 'gym-copia-' + new Date().toISOString().slice(0, 10) + '.json';
     function ok() { state.settings.lastBackup = Date.now(); save(); toast('Copia guardada'); render(); }
@@ -3045,6 +3060,12 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
         toast('Sesión borrada', function () { state.sessions.splice(Math.min(di, state.sessions.length), 0, ds); save(); render(); });
       }, true); break; }
       case 'backup': backup(); break;
+      case 'seed-mine': state.settings.seedMine = true; save(); render(); break;
+      case 'seed-clear': ask('Quitar pesos de partida', 'Se quitan los pesos de partida de ' + seedLeft().length + ' ejercicios. Tus entrenos guardados no cambian y puedes recuperarlos desde aquí.', 'Quitar', function () {
+        var bak = {}; seedLeft().forEach(function (e) { bak[e.id] = e.baseline; delete e.baseline; });
+        state.settings.seedBak = bak; save(); closeModal(); render(); toast('Pesos de partida quitados');
+      }); break;
+      case 'seed-undo': (function () { var bak = state.settings.seedBak || {}; state.exercises.forEach(function (e) { if (bak[e.id] && !e.baseline) e.baseline = bak[e.id]; }); delete state.settings.seedBak; state.settings.seedMine = false; save(); render(); toast('Pesos de partida recuperados'); })(); break;
       case 'copy': {
         var txt = exportData();
         var fall = function () { openModal({ type: 'text', title: 'Copia de seguridad', text: txt }); setTimeout(function () { var ta = $('#export-ta'); if (ta) { ta.focus(); ta.select(); } }, 50); };
@@ -3107,7 +3128,7 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
     });
     window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (r) { swReg = r; }).catch(function () { }); });
   }
-  window.__gym = { get state() { return state; }, E: E, sounds: sounds, socSync: socSync, get sw() { return sw; }, canPull: function () { return canPull(); }, get socBusy() { return socBusy; }, get clockOn() { return !!clock; } }; // útil para pruebas
+  window.__gym = { get state() { return state; }, E: E, exportData: function () { return exportData(); }, sounds: sounds, socSync: socSync, get sw() { return sw; }, canPull: function () { return canPull(); }, get socBusy() { return socBusy; }, get clockOn() { return !!clock; } }; // útil para pruebas
 })();
 
 </script>

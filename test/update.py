@@ -1,6 +1,7 @@
 # Comprueba que una versión nueva publicada llega a la app sin pasos raros:
 # el service worker baja los archivos sin usar la caché HTTP y la app se recarga sola.
 import subprocess, sys, time, os, shutil, tempfile, re
+import _pau  # noqa: simula el iPhone de Pau (pesos de partida)
 from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 tmp = tempfile.mkdtemp()

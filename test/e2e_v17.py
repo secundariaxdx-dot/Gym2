@@ -1,5 +1,6 @@
 # v1.7: clic más audible, línea de progreso del entreno, gráficos por ejercicio y por grupo muscular.
 import subprocess, sys, time, os, json
+import _pau  # noqa: simula el iPhone de Pau (pesos de partida)
 from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 srv = subprocess.Popen([sys.executable, '-m', 'http.server', '8772', '-d', ROOT], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

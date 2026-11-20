@@ -2,6 +2,7 @@
 # distintos contra el Worker local: solicitudes, aceptar/rechazar, cuenta privada, admin que ve sin seguir.
 import subprocess, sys, time, os, re, json, tempfile, signal, urllib.request
 from PIL import Image
+import _pau  # noqa: simula el iPhone de Pau (pesos de partida)
 from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'shots'); os.makedirs(OUT, exist_ok=True)

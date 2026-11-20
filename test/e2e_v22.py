@@ -1,6 +1,7 @@
 # v2.2: fotos en los entrenos (IndexedDB) y figura con los músculos trabajados en un carrusel deslizable.
 import subprocess, sys, time, os, tempfile
 from PIL import Image, ImageDraw
+import _pau  # noqa: simula el iPhone de Pau (pesos de partida)
 from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 srv = subprocess.Popen([sys.executable, '-m', 'http.server', '8775', '-d', ROOT], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
