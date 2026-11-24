@@ -555,6 +555,25 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
 .exi-fig .bm-m.on, .exh-svg .bm-m.on { fill: var(--accent); }
 @media (min-width: 700px) { .exh-row { grid-auto-columns: calc(50% - 4px); } }
 
+/* v3.7 unilaterales */
+.uni-tag { color: var(--accent); font-weight: 700; }
+.set.half .chk { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.chk.side .sd { font-weight: 800; font-size: 13px; letter-spacing: -.02em; }
+.uni-panel { margin: 12px 0 4px; padding: 14px; border-radius: 16px; background: var(--input); display: flex; flex-direction: column; gap: 10px; }
+.uni-panel.fin { gap: 2px; }
+.uni-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-variant-numeric: tabular-nums; }
+.uni-top span { font-weight: 600; }
+.uni-steps { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.uni-st { font-size: 13px; font-weight: 700; padding: 5px 12px; border-radius: 999px; background: var(--card); color: var(--muted); }
+.uni-st.on { background: var(--accent); color: var(--on-accent); }
+.uni-st.ok { background: var(--accent-soft); color: var(--accent); }
+.uni-arr { color: var(--muted); }
+.uni-now { font-size: 17px; font-weight: 700; }
+.uni-now .muted { font-size: 13px; font-weight: 500; }
+.btn.uni-go { min-height: 56px; font-size: 18px; font-weight: 800; width: 100%; }
+.uni-undo { align-self: center; margin: 0; }
+.uni-first { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
 </style>
 </head>
 <body>
@@ -1148,12 +1167,24 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
     save(); ui.tab = 'hoy'; wake(); render();
   }
 
-  function startTimer(ex) {
-    var rest = E.restFor(ex || {});
+  // o (opcional, unilaterales): {secs, kind: 'side' | 'round', next: 'L' | 'R'}
+  function startTimer(ex, o) {
+    var rest = o && o.secs > 0 ? o.secs : E.restFor(ex || {});
     timer = { end: Date.now() + rest * 1000, total: rest, fired: false };
+    if (o && o.kind) { timer.kind = o.kind; if (o.next) timer.next = o.next; }
     save(); updateTimer(); pushSync(); clockSync();
   }
   function clearTimer() { if (timer && timer.armed) pushStop(); timer = null; }
+
+  /* ---------- ejercicios unilaterales: cada serie es una ronda de dos lados con el mismo peso y reps ----------
+     En la serie: half = lado ya hecho ('L'/'R'); done = los dos lados hechos (solo entonces cuenta y se guarda). */
+  var SIDE = { L: 'izquierda', R: 'derecha' }, SIDE_UP = { L: 'Izquierda', R: 'Derecha' }, LADO = { L: 'izquierdo', R: 'derecho' }, SIDE_AB = { L: 'Izq', R: 'Der' };
+  function exUni(e) { var x = exById(e.exId); return !!(x && x.uni); }
+  function uniFirst(e) { var x = exById(e.exId); return x && x.uniFirst === 'R' ? 'R' : 'L'; }
+  function otherSide(sd) { return sd === 'R' ? 'L' : 'R'; }
+  function sideNow(e, st) { return st.half ? otherSide(st.half) : uniFirst(e); } // lado que toca en esa serie
+  function sideRest(x) { return x && x.restSide > 0 ? x.restSide : 60; }
+  function roundRest(x) { return x && x.rest > 0 ? x.rest : 120; }
 
   /* ---------- aviso con la app cerrada (Web Push vía servidor gym-push) ---------- */
   var PUSH = window.__GYM_PUSH || { url: 'https://gym-push.secundariaxdx.workers.dev', key: 'BBlqNdvPtv93oxTx8Zr10Yi5ZeNHb3uGzCIo_174AAwCttp-vr9gp0KIeTGiJwDEUX5ZqSUgGg73nZD1aUXJEyU' };
@@ -1213,7 +1244,8 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
     var e = a.entries[i], st = e.sets[j], p = e.plan && e.plan[j] || {};
     var w = String(st.w).trim() !== '' ? num(st.w) : p.w, r = String(st.r).trim() !== '' ? num(st.r) : p.r;
     var what = w > 0 && r > 0 ? fmt(w) + ' kg × ' + r : r > 0 ? r + ' reps' : w > 0 ? fmt(w) + ' kg' : '';
-    return (other ? 'Siguiente ejercicio · serie ' : 'Serie ') + (j + 1) + '/' + e.sets.length + (what ? ': ' + what : '');
+    var side = exUni(e) ? (st.half ? ' · ahora lado ' + LADO[otherSide(st.half)] : ' · lado ' + LADO[uniFirst(e)]) : '';
+    return (other ? 'Siguiente ejercicio · serie ' : 'Serie ') + (j + 1) + '/' + e.sets.length + side + (what ? ': ' + what : '');
   }
   function saveNextNote(end, text) {
     try {
@@ -1299,11 +1331,12 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
     if (!timer) { el.hidden = true; document.body.classList.remove('has-timer'); return; }
     var left = (timer.end - Date.now()) / 1000;
     el.hidden = false; document.body.classList.add('has-timer');
+    var tl = $('.tl', el), lbl = timer.kind === 'side' ? 'Entre lados' : timer.kind === 'round' ? 'Entre series' : 'Descanso'; if (tl && tl.textContent !== lbl) tl.textContent = lbl;
     if (timer.armed && !document.hidden && left <= 2.5) pushSync();
     if (left <= 0) {
       if (!timer.fired) { timer.fired = true; if (-left <= 5) beep(); } // si vuelves mucho después, no suena
       if (-left > 5) { timer = null; save(); el.hidden = true; document.body.classList.remove('has-timer'); return; }
-      el.classList.add('fin'); $('.t', el).textContent = '¡Listo!'; $('.bar i', el).style.width = '100%';
+      el.classList.add('fin'); $('.t', el).textContent = timer.kind === 'side' ? 'Toca ' + SIDE[timer.next || 'R'] : timer.kind === 'round' ? 'Siguiente serie' : '¡Listo!'; $('.bar i', el).style.width = '100%';
     } else {
       el.classList.remove('fin'); $('.t', el).textContent = mmss(left); $('.bar i', el).style.width = Math.max(0, 100 - (left / timer.total) * 100) + '%';
     }
@@ -1404,8 +1437,8 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
   }
 
   function cardHtml(e, i, open) {
-    var d = e.sets.filter(function (s) { return s.done; }).length;
-    var h = '<section class="card ex' + (open ? ' open' : '') + '"><button class="ex-head" data-a="toggle" data-i="' + i + '"><div><div class="ex-name">' + esc(e.name) + '</div><div class="muted small">' + esc(e.muscle) + '</div></div><div class="ex-meta"><div class="ex-count' + (d && d === e.sets.length ? ' full' : '') + '">' + d + '/' + e.sets.length + '</div>' + CHEV + '</div></button>';
+    var d = e.sets.filter(function (s) { return s.done; }).length, uni = exUni(e);
+    var h = '<section class="card ex' + (open ? ' open' : '') + (uni ? ' uni' : '') + '"><button class="ex-head" data-a="toggle" data-i="' + i + '"><div><div class="ex-name">' + esc(e.name) + '</div><div class="muted small">' + esc(e.muscle) + (uni ? ' · <span class="uni-tag">Unilateral</span>' : '') + '</div></div><div class="ex-meta"><div class="ex-count' + (d && d === e.sets.length ? ' full' : '') + '">' + d + '/' + e.sets.length + '</div>' + CHEV + '</div></button>';
     if (!open) return h + '</section>';
     h += '<div class="ex-body">';
     if (e.stall) {
@@ -1421,14 +1454,56 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
     h += '<div class="set head"><div>#</div><div>Objetivo</div><div>kg</div><div>Reps</div><div></div></div>';
     e.sets.forEach(function (s, j) {
       var p = e.plan[Math.min(j, e.plan.length - 1)];
-      h += '<div class="set' + (s.done ? ' done' : '') + '" data-row="' + i + '-' + j + '"><div class="n">' + (s.pr ? '🏆' : (j + 1)) + '</div><div class="tgt">' + targetText(p) + '</div>' +
+      h += '<div class="set' + (s.done ? ' done' : uni && s.half ? ' half' : '') + '" data-row="' + i + '-' + j + '"><div class="n">' + (s.pr ? '🏆' : (j + 1)) + '</div><div class="tgt">' + targetText(p) + '</div>' +
         '<input class="in" data-f="w" data-i="' + i + '" data-j="' + j + '" inputmode="decimal" autocomplete="off" value="' + esc(typeof s.w === 'number' ? fmt(s.w) : s.w) + '" placeholder="kg" aria-label="Peso serie ' + (j + 1) + '">' +
         '<input class="in" data-f="r" data-i="' + i + '" data-j="' + j + '" inputmode="numeric" autocomplete="off" value="' + esc(s.r) + '" placeholder="' + (p ? p.r : '') + '" aria-label="Repeticiones serie ' + (j + 1) + '">' +
-        '<button class="chk" data-a="done" data-i="' + i + '" data-j="' + j + '" aria-label="Marcar serie ' + (j + 1) + '">' + CHECK + '</button></div>';
+        (uni ? '<button class="chk side" data-a="side" data-i="' + i + '" data-j="' + j + '" aria-label="' + (s.done ? 'Ronda ' + (j + 1) + ' completada' : 'Terminar lado ' + LADO[sideNow(e, s)] + ', serie ' + (j + 1)) + '">' + (s.done ? CHECK : '<span class="sd">' + (s.half ? SIDE_AB[s.half] + '✓' : SIDE_AB[sideNow(e, s)]) + '</span>') + '</button></div>'
+          : '<button class="chk" data-a="done" data-i="' + i + '" data-j="' + j + '" aria-label="Marcar serie ' + (j + 1) + '">' + CHECK + '</button></div>');
     });
+    if (uni) h += uniPanel(e, i);
     h += '<div class="ex-actions"><button class="btn sm" data-a="add-set" data-i="' + i + '">+ Serie</button><button class="btn sm" data-a="del-set" data-i="' + i + '">− Serie</button><button class="btn sm" data-a="swap" data-i="' + i + '">Cambiar</button><button class="btn sm" data-a="ex-set" data-i="' + i + '">Ajustes</button><button class="btn sm danger" data-a="rm-ex" data-i="' + i + '">Quitar</button>' +
       '<button class="btn sm" data-a="ex-up" data-i="' + i + '" aria-label="Mover antes"' + (i === 0 ? ' disabled' : '') + '>↑</button><button class="btn sm" data-a="ex-down" data-i="' + i + '" aria-label="Mover después"' + (i === state.active.entries.length - 1 ? ' disabled' : '') + '>↓</button></div></div></section>';
     return h;
+  }
+
+  // Panel grande de la ronda en curso (primera serie sin terminar)
+  function uniPanel(e, i) {
+    var j = -1; for (var k = 0; k < e.sets.length; k++) if (!e.sets[k].done) { j = k; break; }
+    if (j < 0) return '<div class="uni-panel fin"><b>Rondas completadas</b><div class="muted small">Los dos lados de todas las series están hechos.</div></div>';
+    var st = e.sets[j], p = e.plan[Math.min(j, e.plan.length - 1)] || {}, now = sideNow(e, st), first = st.half || uniFirst(e);
+    var w = String(st.w).trim() !== '' ? num(st.w) : p.w, r = String(st.r).trim() !== '' ? num(st.r) : p.r;
+    var what = (w > 0 ? fmt(w) + ' kg' : '') + (w > 0 && r > 0 ? ' × ' : '') + (r > 0 ? r + ' reps' : '');
+    var h = '<div class="uni-panel" data-uni="' + i + '-' + j + '"><div class="uni-top"><b>Serie ' + (j + 1) + ' de ' + e.sets.length + '</b><span>' + (what || 'Pon peso y repeticiones') + '</span></div>' +
+      '<div class="uni-steps"><span class="uni-st' + (st.half ? ' ok' : ' on') + '">' + (st.half ? '✓ ' : '1 · ') + SIDE_UP[first] + '</span><span class="uni-arr">›</span><span class="uni-st' + (st.half ? ' on' : '') + '">2 · ' + SIDE_UP[otherSide(first)] + '</span></div>' +
+      '<div class="uni-now">' + (st.half ? 'Ahora: lado ' + LADO[now] + ' <span class="muted">(mismo peso y repeticiones)</span>' : 'Primer lado: ' + LADO[now]) + '</div>' +
+      '<button class="btn primary uni-go" data-a="side" data-i="' + i + '" data-j="' + j + '">Terminar ' + SIDE[now] + '</button>';
+    if (st.half) h += '<button class="link uni-undo" data-a="side-undo" data-i="' + i + '" data-j="' + j + '">Deshacer lado ' + LADO[st.half] + '</button>';
+    else h += '<div class="uni-first"><span class="muted small">Empieza por</span><button class="chip tog' + (first === 'L' ? ' on' : '') + '" data-a="side-first" data-i="' + i + '" data-v="L">Izquierda</button><button class="chip tog' + (first === 'R' ? ' on' : '') + '" data-a="side-first" data-i="' + i + '" data-v="R">Derecha</button></div>';
+    return h + '</div>';
+  }
+
+  // Sin reps escritas: vale el objetivo que se muestra (y su peso si el campo está vacío). Devuelve false si falta algo.
+  function fillSet(e, i, j) {
+    var s = e.sets[j], pj = e.plan && e.plan[j], exr = exById(e.exId);
+    if (pj && pj.r > 0) {
+      if (String(s.r).trim() === '') s.r = pj.r;
+      if (String(s.w).trim() === '' && pj.w > 0) s.w = pj.w;
+    }
+    var w = num(s.w), r = num(s.r);
+    var wOk = !isNaN(w) || (exr && exr.equip === 'corporal');
+    if (!(r > 0) || !wOk) { var row = $('[data-row="' + i + '-' + j + '"]'); if (row) { row.classList.remove('err'); void row.offsetWidth; row.classList.add('err'); } toast('Anota peso y repeticiones'); return false; }
+    s.w = isNaN(w) ? 0 : w; s.r = r; return true;
+  }
+  // Serie (o ronda) terminada: si el ejercicio ya está completo, abre el siguiente con series pendientes
+  function afterRound(e, i, j) {
+    var act = state.active, moved = false;
+    if (e.sets.every(function (x) { return x.done; })) {
+      var nx = nextPending(i);
+      if (nx >= 0) { act.open = nx; moved = true; } else if (i + 1 < act.entries.length) act.open = i + 1;
+    }
+    save(); render();
+    var pc = $('[data-row="' + i + '-' + j + '"] .chk'); if (pc) pc.classList.add('pop');
+    if (moved) { animOpen(); scrollToOpen('start'); }
   }
 
   function viewWorkout() {
@@ -2620,7 +2695,7 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
       '<section class="card pad"><h2>Fútbol y correr</h2><label class="switch"><span>Cuentan (poco) en la fatiga de piernas</span><input type="checkbox" data-f="actFatigue"' + (state.settings.actFatigue !== false ? ' checked' : '') + '></label></section>' +
       '<section class="card pad"><h2>Instalar en el iPhone</h2><p class="muted small">En Safari: botón Compartir → «Añadir a pantalla de inicio». Así se abre a pantalla completa y los datos se conservan.</p></section>' +
       '<section class="card pad"><h2>Datos iniciales</h2><p class="muted small">Vuelve a cargar tus 17 ejercicios con la última sesión de las capturas. Borra tu historial.</p><button class="btn danger" data-a="reset">Restaurar datos iniciales</button></section>' +
-      '<div class="muted small center" id="ver">Versión 3.3 (gym-v23) · progresión al fallo con doble progresión</div>';
+      '<div class="muted small center" id="ver">Versión 3.3 (gym-v24) · progresión al fallo con doble progresión</div>';
   }
 
   /* ---------- modales ---------- */
@@ -2644,6 +2719,10 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
         '<label>Fatiga que genera<select id="f-fat">' + [1, 2, 3].map(function (k) { return '<option value="' + k + '"' + (k === ex.fatigue ? ' selected' : '') + '>' + FAT[k] + '</option>'; }).join('') + '</select></label>' +
         '<div class="muted small">Alta: multiarticulares pesados. Baja: aislamiento. Cuenta para el descanso y para detectar estancamiento.</div>' +
         '<div class="two"><label>Series<input id="f-sets" inputmode="numeric" value="' + ex.sets + '"></label><label>Descanso (s, 0 = auto)<input id="f-rest" inputmode="numeric" value="' + (ex.rest || 0) + '"></label></div>' +
+        '<label class="switch"><span>Unilateral<br><span class="muted small">Primero un lado y luego el otro, con el mismo peso y repeticiones</span></span><input type="checkbox" id="f-uni"' + (ex.uni ? ' checked' : '') + '></label>' +
+        '<div id="f-uni-box"' + (ex.uni ? '' : ' hidden') + '><div class="two"><label>Empieza por<select id="f-first"><option value="L"' + (ex.uniFirst !== 'R' ? ' selected' : '') + '>Izquierda</option><option value="R"' + (ex.uniFirst === 'R' ? ' selected' : '') + '>Derecha</option></select></label>' +
+        '<label>Descanso entre lados (s)<input id="f-rside" inputmode="numeric" value="' + (ex.restSide > 0 ? ex.restSide : 60) + '"></label></div>' +
+        '<div class="muted small">El «Descanso» de arriba es el de entre series (con 0, en unilaterales son 2 min).</div></div>' +
         '<div class="r-btns"><button class="btn primary" data-a="exedit-save">Guardar</button><button class="btn" data-a="close">Cancelar</button></div>' +
         (m.isNew ? '' : '<button class="link danger" data-a="ex-del">Eliminar ejercicio</button>');
     } else if (m.type === 'routine') {
@@ -2785,6 +2864,11 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
     ex.repMin = min; ex.repMax = max; ex.stepUnit = unit;
     ex.step = unit === 'lb' ? Math.round(stepIn * LB * 100) / 100 : stepIn;
     ex.fatigue = parseInt($('#f-fat').value, 10); ex.sets = sets; ex.rest = Math.max(0, parseInt($('#f-rest').value, 10) || 0);
+    var uniC = $('#f-uni');
+    if (uniC) {
+      if (uniC.checked) { ex.uni = true; ex.uniFirst = $('#f-first').value === 'R' ? 'R' : 'L'; var rs = parseInt($('#f-rside').value, 10); ex.restSide = rs > 0 ? Math.min(rs, 900) : 60; }
+      else if (ex.uni) ex.uni = false;
+    }
     if (m.isNew) { state.exercises.push(ex); }
     else { var cur = exById(ex.id); Object.keys(ex).forEach(function (k) { cur[k] = ex[k]; }); }
     save(); var after = m.after; closeModal();
@@ -2812,7 +2896,9 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
         sets.forEach(function (s) { if (!bestSet || E.e1rm(s.w, s.r) > E.e1rm(bestSet.w, bestSet.r)) bestSet = s; });
         if (bestSet && E.isPR(prev, bestSet.w, bestSet.r)) prs.push({ exId: e.exId, name: e.name, w: bestSet.w, r: bestSet.r });
       }
-      exs.push({ exId: e.exId, name: e.name, muscle: e.muscle, sec: e.sec, fatigue: e.fatigue, sets: sets });
+      var xe = { exId: e.exId, name: e.name, muscle: e.muscle, sec: e.sec, fatigue: e.fatigue, sets: sets };
+      if (exUni(e)) xe.uni = true;
+      exs.push(xe);
     });
     var sess = { id: a.id, t: now, t0: a.t0, key: a.key, name: a.name, exercises: exs, prs: prs };
     state.sessions.push(sess);
@@ -2983,29 +3069,43 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
       case 'start': startWorkout(el.getAttribute('data-k')); break;
       case 'toggle': act.open = act.open === i ? -1 : i; save(); render(); animOpen(); break;
       case 'done': {
-        var e = act.entries[i], s = e.sets[j];
+        var e = act.entries[i], s = e.sets[j], exr = exById(e.exId);
         if (s.done) { s.done = false; s.pr = false; save(); render(); break; }
-        // Sin reps escritas: vale el objetivo que se muestra (y su peso si el campo está vacío)
-        var pj = e.plan && e.plan[j];
-        if (pj && pj.r > 0) {
-          if (String(s.r).trim() === '') s.r = pj.r;
-          if (String(s.w).trim() === '' && pj.w > 0) s.w = pj.w;
-        }
-        var w = num(s.w), r = num(s.r), exr = exById(e.exId);
-        var wOk = !isNaN(w) || (exr && exr.equip === 'corporal');
-        if (!(r > 0) || !wOk) { var row = $('[data-row="' + i + '-' + j + '"]'); if (row) { row.classList.remove('err'); void row.offsetWidth; row.classList.add('err'); } toast('Anota peso y repeticiones'); break; }
-        s.done = true; s.w = isNaN(w) ? 0 : w; s.r = r; lastDoneI = i;
+        if (!fillSet(e, i, j)) break;
+        s.done = true; lastDoneI = i;
         play('tick');
         checkPR(e, j);
         startTimer(exr || { fatigue: e.fatigue });
-        var moved = false;
-        if (e.sets.every(function (x) { return x.done; })) {
-          var nx = nextPending(i);
-          if (nx >= 0) { act.open = nx; moved = true; } else if (i + 1 < act.entries.length) act.open = i + 1;
+        afterRound(e, i, j);
+        break;
+      }
+      case 'side': { // unilateral: primer lado → descanso entre lados; segundo lado → ronda hecha y descanso entre series
+        var eu = act.entries[i], su = eu.sets[j], xu = exById(eu.exId);
+        if (su.done) { su.done = false; su.pr = false; save(); render(); toast('Ronda reabierta: falta el lado ' + LADO[otherSide(su.half || uniFirst(eu))]); break; }
+        if (!su.half) {
+          if (!fillSet(eu, i, j)) break;
+          su.half = uniFirst(eu); lastDoneI = i; play('tick');
+          startTimer(xu, { secs: sideRest(xu), kind: 'side', next: otherSide(su.half) });
+          save(); render();
+          var pu = $('[data-row="' + i + '-' + j + '"] .chk'); if (pu) pu.classList.add('pop');
+          break;
         }
-        save(); render();
-        var pc = $('[data-row="' + i + '-' + j + '"] .chk'); if (pc) pc.classList.add('pop');
-        if (moved) { animOpen(); scrollToOpen('start'); }
+        if (!fillSet(eu, i, j)) break;
+        su.done = true; lastDoneI = i; play('tick');
+        checkPR(eu, j);
+        startTimer(xu || { fatigue: eu.fatigue }, { secs: roundRest(xu), kind: 'round' });
+        afterRound(eu, i, j);
+        break;
+      }
+      case 'side-undo': {
+        var ed = act.entries[i], sdn = ed.sets[j]; if (!sdn || sdn.done || !sdn.half) break;
+        var was = sdn.half; delete sdn.half; if (timer && timer.kind === 'side') clearTimer();
+        save(); render(); updateTimer(); toast('Lado ' + LADO[was] + ' deshecho');
+        break;
+      }
+      case 'side-first': {
+        var xf = exById(act.entries[i].exId); if (!xf) break;
+        xf.uniFirst = el.getAttribute('data-v') === 'R' ? 'R' : 'L'; save(); render();
         break;
       }
       case 'add-set': { var e1 = act.entries[i]; var lastS = e1.sets[e1.sets.length - 1]; e1.sets.push({ w: lastS ? lastS.w : '', r: '', done: false }); save(); render(); break; }
@@ -3257,7 +3357,9 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
     var t = ev.target, f = t.getAttribute && t.getAttribute('data-f'); if (!f) return;
     if (f === 'w' || f === 'r') {
       var s = state.active.entries[+t.getAttribute('data-i')].sets[+t.getAttribute('data-j')];
-      s[f] = t.value; if (s.done) { s.done = false; var row = t.closest('.set'); if (row) row.classList.remove('done'); save(); updateWprog(); }
+      var eIn = state.active.entries[+t.getAttribute('data-i')];
+      s[f] = t.value; if (s.done && exUni(eIn)) saveSoon(); // ronda ya hecha: se corrige el dato sin reabrirla
+      else if (s.done) { s.done = false; var row = t.closest('.set'); if (row) row.classList.remove('done'); save(); updateWprog(); }
       else saveSoon();
     } else if (f === 'q') { ui.query = t.value; $('#ex-list').innerHTML = exListHtml(); }
     else if (f === 'sp-time' && ui.modal && ui.modal.type === 'supp') { ui.modal.times[+t.getAttribute('data-k')] = t.value; }
@@ -3275,6 +3377,7 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
     else if (t.getAttribute && t.getAttribute('data-f') === 'sp-freq' && ui.modal && ui.modal.type === 'supp') { suppKeep(); ui.modal.freq = t.value; renderModal(); }
     else if (t.getAttribute && t.getAttribute('data-f') === 'sp-time' && ui.modal && ui.modal.type === 'supp') { ui.modal.times[+t.getAttribute('data-k')] = t.value; }
     else if (t.getAttribute && t.getAttribute('data-f') === 'c-kind' && ui.modal && ui.modal.type === 'clase') { ui.modal.kind = t.value; renderModal(); }
+    else if (t.id === 'f-uni') { var ub = $('#f-uni-box'); if (ub) ub.hidden = !t.checked; }
     else if (t.id === 'f-equip' && ui.modal && ui.modal.type === 'exedit' && ui.modal.isNew && !ui.modal.stepTouched) { $('#f-step').value = fmt(STEP_DEFAULT[t.value] || 2.5); $('#f-unit').value = 'kg'; }
   });
   document.addEventListener('focusin', function (ev) {

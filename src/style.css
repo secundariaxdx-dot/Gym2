@@ -538,3 +538,22 @@ header .by .av { width: 28px; height: 28px; font-size: 12px; }
 .exh-svg { height: 92px; width: auto; flex: none; }
 .exi-fig .bm-m.on, .exh-svg .bm-m.on { fill: var(--accent); }
 @media (min-width: 700px) { .exh-row { grid-auto-columns: calc(50% - 4px); } }
+
+/* v3.7 unilaterales */
+.uni-tag { color: var(--accent); font-weight: 700; }
+.set.half .chk { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.chk.side .sd { font-weight: 800; font-size: 13px; letter-spacing: -.02em; }
+.uni-panel { margin: 12px 0 4px; padding: 14px; border-radius: 16px; background: var(--input); display: flex; flex-direction: column; gap: 10px; }
+.uni-panel.fin { gap: 2px; }
+.uni-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-variant-numeric: tabular-nums; }
+.uni-top span { font-weight: 600; }
+.uni-steps { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.uni-st { font-size: 13px; font-weight: 700; padding: 5px 12px; border-radius: 999px; background: var(--card); color: var(--muted); }
+.uni-st.on { background: var(--accent); color: var(--on-accent); }
+.uni-st.ok { background: var(--accent-soft); color: var(--accent); }
+.uni-arr { color: var(--muted); }
+.uni-now { font-size: 17px; font-weight: 700; }
+.uni-now .muted { font-size: 13px; font-weight: 500; }
+.btn.uni-go { min-height: 56px; font-size: 18px; font-weight: 800; width: 100%; }
+.uni-undo { align-self: center; margin: 0; }
+.uni-first { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
